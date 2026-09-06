@@ -41,7 +41,11 @@ rollback netcode.
 4. **Level won** when the kill quota is met *and* at least one pod survives →
    brief pause → next level. **Level lost** if every pod is destroyed or
    stolen → the level restarts.
-5. Hull hits 0 → destroyed → `R` respawns; the level continues (pods persist).
+5. Hull hits 0 → **the whole world freezes**, a SHIP DESTROYED panel shows
+   (level + score); any key after ~0.7 s launches a fresh ship *in place*
+   with ~2 s invulnerability. The level continues with the surviving pods.
+6. The campaign is endless — levels past the hand-authored table are generated
+   and keep escalating. (No hard win screen yet; see §18.)
 
 ## 4. Controls
 
@@ -73,10 +77,11 @@ The steering model is the distinctive part and must match NetWars:
 | `X` | Full stop — null all momentum quickly |
 | `A` / `D` | Roll left / right (`rollRate` ≈ 2.0 rad/s) |
 | `Shift` | Extra thrust — shows `EXTRA THRUST` |
-| `Space` | Fire missiles |
+| `Space` | Fire cannon |
+| `F` / RMB | Fire guided missile |
 | `[` / `]` | Scanner zoom out / in (5 levels) |
 | `H` | Flash the key list for ~4 s |
-| `R` | Respawn when destroyed |
+| any key | Respawn (while the SHIP DESTROYED panel is up) |
 
 Later: gamepad, rebindable keys.
 
@@ -145,8 +150,8 @@ Phosphor palette: amber `#ff2b2b`, green `#35e04a`, scanner red `#d21f1f`.
 | Heading indicator (`+`, centre missing) | center | fixed; the nose |
 | Intent marker (`×`, centre missing) | center + `intent · (0.34·viewport)` | lags toward cursor |
 | Raw mouse | center + `mouse · (0.34·viewport)` | tiny white square |
-| Message | upper-center | `LEVEL n`, `COLLISION`, flashes ~2 s |
-| `SHIP DESTROYED / press R` | center | when hull = 0 |
+| Message | upper-center | `LEVEL n`, `LEVEL n CLEARED`, `COLLISION`, `POD DOWN`, flashes ~1–3 s |
+| `SHIP DESTROYED` panel | center | bordered, dims the frozen scene, shows level + score + "press any key" |
 
 ## 8. Scanner (the signature element)
 
