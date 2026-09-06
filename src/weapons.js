@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 
 const MAX = 240;
+const FZ = new THREE.Vector3(0, 0, 1);
 
-// Pooled projectiles rendered as one LineSegments streak buffer. Player shots
-// gently home toward a locked target (NetWars missiles tracked a little).
+// Pooled projectiles: each active shot is a chunky glowing bolt mesh oriented
+// along its velocity, plus a bright additive trail. Player shots gently home
+// toward a locked target (NetWars missiles tracked a little).
 export class Weapons {
   constructor(scene) {
     this.pos = [];
@@ -17,19 +19,42 @@ export class Weapons {
     }
     this.cursor = 0;
 
-    this.positions = new Float32Array(MAX * 2 * 3);
-    this.colors = new Float32Array(MAX * 2 * 3);
-    this.geom = new THREE.BufferGeometry();
-    this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    this.geom.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
-    const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95 });
-    this.mesh = new THREE.LineSegments(this.geom, mat);
-    this.mesh.frustumCulled = false;
-    scene.add(this.mesh);
+    // --- bolt meshes -------------------------------------------------------
+    const boltGeo = new THREE.OctahedronGeometry(1, 0);
+    boltGeo.scale(2.6, 2.6, 10);            // chunky diamond, elongated along local Z
+    this._matP = new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85 });
+    this._matE = new THREE.MeshBasicMaterial({ color: 0xff6a44, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85 });
+    const coreGeo = new THREE.OctahedronGeometry(1, 0);
+    coreGeo.scale(1.3, 1.3, 5.5);
+    const matCore = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85 });
 
-    this._cP = new THREE.Color(0x9ff0ff);
+    this.bolts = [];
+    for (let i = 0; i < MAX; i++) {
+      const m = new THREE.Mesh(boltGeo, this._matP);
+      m.add(new THREE.Mesh(coreGeo, matCore));
+      m.visible = false;
+      m.frustumCulled = false;
+      scene.add(m);
+      this.bolts.push(m);
+    }
+
+    // --- trails ----------------------------------------------------------
+    this.tpos = new Float32Array(MAX * 2 * 3);
+    this.tcol = new Float32Array(MAX * 2 * 3);
+    this.tgeom = new THREE.BufferGeometry();
+    this.tgeom.setAttribute('position', new THREE.BufferAttribute(this.tpos, 3));
+    this.tgeom.setAttribute('color', new THREE.BufferAttribute(this.tcol, 3));
+    this.trails = new THREE.LineSegments(
+      this.tgeom,
+      new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 })
+    );
+    this.trails.frustumCulled = false;
+    scene.add(this.trails);
+
+    this._cP = new THREE.Color(0x8fe8ff);
     this._cE = new THREE.Color(0xff5a3c);
     this._tmp = new THREE.Vector3();
+    this._dir = new THREE.Vector3();
   }
 
   spawn(pos, vel, team, ttl, target = null) {
@@ -43,12 +68,18 @@ export class Weapons {
   }
 
   update(dt, player, enemies, pods, explosions, audio, onKill) {
-    const p = this.positions;
-    const c = this.colors;
+    const tp = this.tpos;
+    const tc = this.tcol;
 
     for (let i = 0; i < MAX; i++) {
       const a = i * 6;
-      if (this.ttl[i] <= 0) { p[a] = p[a+1] = p[a+2] = p[a+3] = p[a+4] = p[a+5] = 0; continue; }
+      const bolt = this.bolts[i];
+
+      if (this.ttl[i] <= 0) {
+        if (bolt.visible) bolt.visible = false;
+        tp[a] = tp[a+1] = tp[a+2] = tp[a+3] = tp[a+4] = tp[a+5] = 0;
+        continue;
+      }
 
       this.ttl[i] -= dt;
 
@@ -86,7 +117,7 @@ export class Weapons {
           }
         }
       } else if (this.team[i] === 'enemy') {
-        if (player.alive && this.pos[i].distanceToSquared(player.position) < 64) {
+        if (player.alive && this.pos[i].distanceToSquared(player.position) < 100) {
           player.damage(9, audio);
           explosions.spark(this.pos[i]);
           hit = true;
@@ -94,23 +125,33 @@ export class Weapons {
       }
       if (hit) this.ttl[i] = 0;
 
-      // write streak
       if (this.ttl[i] > 0) {
-        const tx = this.pos[i].x - this.vel[i].x * 0.018;
-        const ty = this.pos[i].y - this.vel[i].y * 0.018;
-        const tz = this.pos[i].z - this.vel[i].z * 0.018;
-        p[a] = this.pos[i].x; p[a+1] = this.pos[i].y; p[a+2] = this.pos[i].z;
-        p[a+3] = tx; p[a+4] = ty; p[a+5] = tz;
-        const col = this.team[i] === 'player' ? this._cP : this._cE;
-        c[a] = c[a+3] = col.r;
-        c[a+1] = c[a+4] = col.g;
-        c[a+2] = c[a+5] = col.b;
+        const isP = this.team[i] === 'player';
+        // bolt mesh
+        bolt.visible = true;
+        bolt.material = isP ? this._matP : this._matE;
+        bolt.position.copy(this.pos[i]);
+        const speed = this.vel[i].length();
+        if (speed > 1e-3) {
+          this._dir.copy(this.vel[i]).multiplyScalar(1 / speed);
+          bolt.quaternion.setFromUnitVectors(FZ, this._dir);
+        }
+        // trail
+        const tx = this.pos[i].x - this.vel[i].x * 0.045;
+        const ty = this.pos[i].y - this.vel[i].y * 0.045;
+        const tz = this.pos[i].z - this.vel[i].z * 0.045;
+        tp[a] = this.pos[i].x; tp[a+1] = this.pos[i].y; tp[a+2] = this.pos[i].z;
+        tp[a+3] = tx; tp[a+4] = ty; tp[a+5] = tz;
+        const col = isP ? this._cP : this._cE;
+        tc[a] = col.r; tc[a+1] = col.g; tc[a+2] = col.b;
+        tc[a+3] = col.r * 0.1; tc[a+4] = col.g * 0.1; tc[a+5] = col.b * 0.1;
       } else {
-        p[a] = p[a+1] = p[a+2] = p[a+3] = p[a+4] = p[a+5] = 0;
+        bolt.visible = false;
+        tp[a] = tp[a+1] = tp[a+2] = tp[a+3] = tp[a+4] = tp[a+5] = 0;
       }
     }
 
-    this.geom.attributes.position.needsUpdate = true;
-    this.geom.attributes.color.needsUpdate = true;
+    this.tgeom.attributes.position.needsUpdate = true;
+    this.tgeom.attributes.color.needsUpdate = true;
   }
 }

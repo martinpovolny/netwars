@@ -107,7 +107,7 @@ export class Player {
       const muzzle = 1300;
       const target = enemies ? enemies.nearestInFront(this, 0.9) : null;
       for (const side of [-1, 1]) {
-        const p = this.position.clone().addScaledVector(right, side * 6).addScaledVector(fwd, 10);
+        const p = this.position.clone().addScaledVector(right, side * 6).addScaledVector(fwd, 26);
         const v = this.velocity.clone().addScaledVector(fwd, muzzle);
         weapons.spawn(p, v, 'player', 2.6, target);
       }

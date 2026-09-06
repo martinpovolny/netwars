@@ -39,22 +39,19 @@
   }
   .gauge .lbl { position: absolute; left: 0; right: 0; top: -20px; text-align: center; color: var(--green); font-size: 13px; }
 
-  /* centre: heading cross (where the nose points) + own-ship chevrons */
+  /* centre heading indicator: a cross with the centre missing */
   #heading {
     position: absolute; left: 50%; top: 50%; width: 240px; height: 240px;
     transform: translate(-50%, -50%);
   }
-  #heading .ship  { stroke: var(--green); stroke-width: 2.5; fill: none; opacity: 0.85; }
-  #heading .cross { stroke: var(--amber); stroke-width: 2; }
-  #heading .core  { fill: #f2f2f2; }
+  #heading .cross { stroke: var(--amber); stroke-width: 2.5; stroke-linecap: round; }
 
   /* deployed intent marker (chases the mouse with lag); ship turns toward it */
   #intent {
-    position: absolute; left: 50%; top: 50%; width: 44px; height: 44px;
-    margin: -22px 0 0 -22px; will-change: transform;
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px;
+    margin: -24px 0 0 -24px; will-change: transform;
   }
-  #intent path { stroke: #dfe7ef; stroke-width: 2; fill: none; }
-  #intent rect { stroke: #dfe7ef; stroke-width: 2; fill: none; }
+  #intent line { stroke: #dfe7ef; stroke-width: 2.5; stroke-linecap: round; }
 
   /* raw mouse cursor: the tiny white rectangle */
   #mouse {
@@ -112,30 +109,22 @@
     <div class="gauge"><div class="fill" id="shd-fill"></div><span class="lbl">S</span></div>
   </div>
 
+  <!-- heading indicator: a cross with the centre missing (nose direction) -->
   <svg id="heading" viewBox="-120 -120 240 240">
-    <!-- own-ship chevrons arranged radially (as in NetWars) -->
-    <g class="ship">
-      <polyline points="-46,-14 -30,0 -46,14" />
-      <polyline points="46,-14 30,0 46,14" />
-      <polyline points="-14,-46 0,-30 14,-46" />
-      <polyline points="-14,46 0,30 14,46" />
-    </g>
-    <!-- heading cross: where the nose is pointing -->
     <g class="cross">
-      <line x1="-16" y1="0" x2="-5" y2="0" />
-      <line x1="16" y1="0" x2="5" y2="0" />
-      <line x1="0" y1="-16" x2="0" y2="-5" />
-      <line x1="0" y1="16" x2="0" y2="5" />
+      <line x1="0" y1="-30" x2="0" y2="-11" />
+      <line x1="0" y1="30" x2="0" y2="11" />
+      <line x1="-30" y1="0" x2="-11" y2="0" />
+      <line x1="30" y1="0" x2="11" y2="0" />
     </g>
-    <circle class="core" cx="0" cy="0" r="2.5" />
   </svg>
 
-  <svg id="intent" viewBox="-22 -22 44 44">
-    <path d="M -20 -10 L -20 -20 L -10 -20" />
-    <path d="M 20 -10 L 20 -20 L 10 -20" />
-    <path d="M -20 10 L -20 20 L -10 20" />
-    <path d="M 20 10 L 20 20 L 10 20" />
-    <rect x="-5" y="-5" width="10" height="10" />
+  <!-- deployed intent marker: a 45deg cross (X), centre missing -->
+  <svg id="intent" viewBox="-24 -24 48 48">
+    <line x1="-22" y1="-22" x2="-8" y2="-8" />
+    <line x1="22" y1="-22" x2="8" y2="-8" />
+    <line x1="-22" y1="22" x2="-8" y2="8" />
+    <line x1="22" y1="22" x2="8" y2="8" />
   </svg>
 
   <div id="mouse"></div>
