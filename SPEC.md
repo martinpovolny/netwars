@@ -34,13 +34,14 @@ rollback netcode.
 
 ## 3. Core loop
 
-1. Spawn in open space with a scanner full of contacts.
-2. Fly (mouse steers via the intent marker, keyboard for throttle/guns).
-3. Destroy the level's required enemies (per-class kill quotas); shoot pods for
-   bonus score.
-4. Level clears → brief pause → next level, more/tougher quotas.
-5. Hull hits 0 → destroyed → `R` respawns (multiplayer: auto-respawn after a
-   delay, score persists).
+1. Each level starts with a **cluster of pods** you must protect and a kill
+   quota of enemies to destroy.
+2. Fly (mouse steers via the intent marker; keyboard for thrust/reverse/guns).
+3. Some enemies attack the pods, some hunt you, one type steals pods.
+4. **Level won** when the kill quota is met *and* at least one pod survives →
+   brief pause → next level. **Level lost** if every pod is destroyed or
+   stolen → the level restarts.
+5. Hull hits 0 → destroyed → `R` respawns; the level continues (pods persist).
 
 ## 4. Controls
 
@@ -66,30 +67,39 @@ The steering model is the distinctive part and must match NetWars:
 |---|---|
 | Mouse | Move raw cursor → intent marker follows → ship turns toward it |
 | Left click | Lock pointer (first click) / fire |
-| `W` / `S` | Throttle up / down |
-| `X` | Cut throttle to zero |
+| `W` | Thrust forward (impulse while held) |
+| `S` | Reverse thrust (impulse while held) |
+| `C` | Brake — bleed speed along the facing axis |
+| `X` | Full stop — null all momentum quickly |
 | `A` / `D` | Roll left / right (`rollRate` ≈ 2.0 rad/s) |
-| `Shift` | Extra thrust (afterburner) — shows `EXTRA THRUST` |
-| `C` | Airbrake (raises drag ~7×) |
+| `Shift` | Extra thrust — shows `EXTRA THRUST` |
 | `Space` | Fire missiles |
+| `[` / `]` | Scanner zoom out / in |
 | `R` | Respawn when destroyed |
 
 Later: gamepad, rebindable keys.
 
 ## 5. Flight model
 
-Newtonian with light space friction for an arcade feel.
+**Newtonian, no throttle.** You point the nose and apply impulses; momentum
+persists. This applies identically to the player *and* every enemy (see §9).
 
-- Thrust acts along the nose: `a = maxThrust · throttle · (boost ? boostMult : 1)`
-  (`maxThrust` 260 u/s², `boostMult` 2.4).
-- `v *= 1 − drag·brake·dt` each step (`drag` 0.16, `brake` 7 when `C` held).
-- Speed capped at `maxSpeed` (520 u/s).
-- Orientation is a quaternion, composed in the ship's **local frame** each frame
-  (`q = q · Δq`), so there is no gimbal lock and roll is real.
-- `Δq` per frame = Euler(pitchRate·dt, yawRate·dt, rollFromKeys), where
+- `W` adds `thrustAccel` (240 u/s²) along +nose; `S` adds it along −nose
+  (reverse). `Shift` multiplies by `boostMult` (2.4).
+- `C` brake removes velocity along the facing axis (either direction) at
+  `brakeAccel` (320 u/s²). `X` scales the whole velocity down fast.
+- Ambient drag is almost nothing (`drag` 0.02) — drift stays until you brake.
+  Speed capped at `maxSpeed` (620 u/s).
+- Orientation is a quaternion composed in the ship's **local frame** each frame
+  (`q = q · Δq`) — no gimbal lock, real roll.
+- `Δq` = Euler(pitchRate·dt, yawRate·dt, rollFromKeys), with
   `yawRate = −intent.x · turnFactor`, `pitchRate = −intent.y · turnFactor`
   (`turnFactor` 1.9 rad/s for the player).
 - Camera = ship transform exactly (true first person, no cockpit offset yet).
+
+Shared enemy flight helper `_fly(dt, aimDir, {throttle, brake, brakeAll, …})`:
+turn nose toward `aimDir` at the class Turn Factor, then thrust / brake. Enemy
+`thrust` and `vmax` are derived from the class Speed Factor.
 
 ## 6. Weapons
 
@@ -114,8 +124,9 @@ Phosphor palette: amber `#ff2b2b`, green `#35e04a`, scanner red `#d21f1f`.
 |---|---|---|
 | Score | top-right | zero-padded |
 | Missiles | top-right | current count |
-| `EXTRA THRUST` | top-right, under missiles | visible while boosting with throttle |
-| Objectives | top-center | `Level N` + remaining `Class×n` |
+| `EXTRA THRUST` | top-right, under missiles | visible while thrusting with `Shift` |
+| Objectives | top-center | `Level N` + remaining `Class×n` + `Scan <range>` |
+| `PODS n/total` | top-center (below objectives) | green; blinks amber when ≤ 2 |
 | Orientation tripod | top-left inset (WebGL) | world axes X-red / Y-green / Z-white, carrying the inverse of ship orientation, fixed camera — swings as you maneuver |
 | `V` gauge | bottom-left | speed / maxSpeed |
 | `S` gauge | bottom-left | hull / maxHull |
@@ -145,61 +156,84 @@ its own scene, with **you at its center**.
 - Colors: enemy red (bright when < 500 u), pod magenta. Danger contacts pulse.
 - Own-ship marker: green cone at the origin pointing −z (forward / into screen).
 - Blips kept ~constant screen size despite perspective.
-- Scanner camera: fov ~42, at `(0, 11, 17)` looking at `(0, 0, −1)`, grid 6×8.
+- **Zoom**: `[` / `]` step `range` through `800 / 1500 / 2600 / 4500 / 8000` u;
+  the current value shows in the HUD objectives line.
+- Scanner camera: fov ~40, at `(0, 13, 21)` looking at `(0, 0, −2)`, grid 6×8.
 
 ## 9. Enemies
 
-Flat-shaded darts, grey/white hull with a per-class accent, vector edge outline.
+Flat-shaded darts, grey/white hull with a per-class accent, vector edge outline,
+scaled up by `SHIP_SCALE` (2.0). All fly with the shared Newtonian helper.
 
-Raw NetWars factors scaled by: `SPEED_K` 0.19 (→ u/s), `TURN_K` 0.062 (→ rad/s),
-`SHIELD_K` 12 (→ hull hp; a player missile does 12, so Shield = hits-to-kill).
+Raw NetWars factors scaled by: `SPEED_K` 0.19 (→ base u/s; `thrust` = 2.4×,
+`vmax` = 2.2×), `TURN_K` 0.062 (→ rad/s), `SHIELD_K` 12 (→ hull hp; a player
+missile does 12, so Shield = hits-to-kill).
 
-| Class | Speed Factor | Turn Factor | Shield | Accent | Score | Fire range |
-|---|---|---|---|---|---|---|
-| Pirate | 500 | 24 | 2 | green `#35e04a` | 100 | 1000 |
-| Fighter | 700 | 24 | 2 | cyan `#2fd0d0` | 150 | 1150 |
-| Guardian | 1100 | 32 | 4 | blue `#3a6bff` | 250 | 1300 |
-| Commander | 900 | 32 | 8 | magenta `#d93bd0` | 500 | 1400 |
+| Class | Behaviour | Target | Speed F. | Turn F. | Shield | Accent | Score |
+|---|---|---|---|---|---|---|---|
+| Pirate | brawler | pods | 500 | 24 | 2 | green `#35e04a` | 100 |
+| Raider | thief | pods | 620 | 20 | 2 | amber `#f0b000` | 120 |
+| Fighter | strafer | pods | 700 | 24 | 2 | cyan `#2fd0d0` | 150 |
+| Guardian | sniper | player | 1100 | 32 | 4 | blue `#3a6bff` | 250 |
+| Commander | charger | player | 900 | 22 | 8 | magenta `#d93bd0` | 500 |
 
-**AI** (per frame, `dist` = range to player):
+**brawler** — close on the assigned pod; orbit + strafe when near; break off and
+brake when very close; turn on the player if it comes within ~380 u. Fires when
+aimed (`nose·to > 0.985`) and in `fireRange`.
 
-- `dist > 950` — fly straight at the player.
-- `550 < dist ≤ 950` — orbit: mostly lateral (strafe), slight closing.
-- `dist ≤ 550` — break off: lateral + slight retreat.
-- Re-pick strafe direction every 1.5–4 s.
-- Turn toward the chosen direction at the class Turn Factor; speed drops to 0.7×
-  when close.
-- Fire when `dist < fireRange` **and** nose·toPlayer > 0.99 (well aimed), on a
-  per-class random cooldown.
+**strafer** — attack runs: thrust straight at the pod firing; at < 240 u or
+after 5 s, pick a wide waypoint 700–1100 u off the pod and blast out to it, then
+re-run.
 
-Spawning: keep ≤ 5 alive, drawn from the level's remaining quota, appearing
-1200–1900 u from the player.
+**thief** — fly to the nearest pod; on contact (and slow enough) grab it
+(`pod.captor = this`), then drag it in a straight line away from the pod
+centroid at a capped `vmax` of ~95 u/s. If it gets > 2600 u from the grab
+point the pod is **stolen** (counts as lost) and the Raider leaves the field —
+no score, but the quota still clears. Kill the Raider first and the pod is
+released, still drifting.
+
+**sniper** — state machine: *relocate* to a perch `1000–1500 u` from the player
+(biased high), decelerating with `brakeAll` on arrival; *hold* for 3.5–6 s
+facing the player, near-stationary, firing straight; then relocate. Bails out of
+*hold* early if the player closes within 480 u.
+
+**charger** — Newtonian joust: turn toward the player, full thrust, **never
+brakes** (low drag), so it overshoots, banks around under its Turn Factor, and
+charges again. Fires on a loose aim gate (`nose·to > 0.9`).
+
+Spawning: keep ≤ 5 alive from the level's remaining quota, appearing 900–1400 u
+from the pod centroid (or the player if no pods remain).
+
+Any removal (shot, ram, or Raider escape) decrements that class's quota.
+Score is awarded for shot/ram kills only.
 
 ## 10. Levels & objectives
 
-From the NetWars "Level Goals" screen: each level is a set of **per-class kill
-quotas**. Level clears when every quota is met and the arena is empty.
+Each level = **per-class kill quotas** + a cluster of pods to protect.
+
+- **Won** when every quota is met, the arena is empty, and ≥ 1 pod survives.
+- **Lost** the instant the last pod is destroyed or stolen → the level restarts.
+- Pods do **not** respawn within a level. `PODS_PER_LEVEL` = 6.
 
 | Level | Quotas |
 |---|---|
-| 1 | Pirate ×4 |
-| 2 | Pirate ×2, Fighter ×3, Commander ×1 |
-| 3 | Fighter ×4, Guardian ×2, Commander ×1 |
-| 4 | Fighter ×3, Guardian ×3, Commander ×2 |
-| 5+ | generated: `fighter 2+N, guardian ⌊N/2⌋, commander ⌊N/3⌋` |
+| 1 | Pirate ×3, Raider ×1 |
+| 2 | Pirate ×2, Raider ×2, Fighter ×2 |
+| 3 | Fighter ×3, Raider ×2, Guardian ×1, Commander ×1 |
+| 4 | Pirate ×2, Fighter ×2, Raider ×3, Guardian ×2, Commander ×1 |
+| 5+ | generated: `fighter 2+N, raider 1+⌊N/2⌋, guardian ⌊N/2⌋, commander ⌊N/3⌋` |
 
-Modes (planned):
-
-- **Campaign** — the quota progression above, solo or co-op.
-- **Defend the pods** — NetWars had a "pods to protect" variant; enemies attack
-  pods, you lose when too few remain.
-- **Deathmatch** — multiplayer, bots fill empty slots, frag limit.
+Modes (planned): **Campaign** (above, solo or co-op) · **Deathmatch**
+(multiplayer, bots fill slots, frag limit) · **Escort** (pods have a
+destination).
 
 ## 11. Pods
 
-Pink faceted octahedra with white antenna spikes. Drift slowly (5–12 u/s), spin,
-don't shoot. Destructible (hp 18) for bonus score (75). Population kept at ~6 in
-campaign. In "defend the pods" they're the objective.
+Pink faceted octahedra (radius ~28, `SHIP_SCALE`-independent) with white antenna
+spikes. Drift slowly (3–8 u/s), spin, don't shoot. `hp` 24 — enemy fire does 8,
+an enemy ramming a pod does 20. **No friendly fire**: player projectiles pass
+through pods entirely. A pod being hauled by a Raider has `captor` set and stops
+drifting; freeing it (killing the Raider) clears `captor`.
 
 ## 12. Visual style
 
@@ -292,14 +326,14 @@ Bots run on the server and appear in snapshots like players.
 
 ```
 index.html            canvas + HUD DOM + CSS + importmap
-src/main.js            scene, lights, render loop, viewport composition, scoring
+src/main.js            scene, lights, render loop, viewports, level win/lose FSM
 src/input.js           keyboard + pointer-lock mouse deltas
-src/player.js          flight model, intent marker, throttle, missiles
-src/weapons.js         pooled projectiles, homing, collision
-src/enemies.js         typed enemies, quota spawning, orbit/strafe AI
-src/pods.js            drifting bonus pods
+src/player.js          Newtonian flight, intent marker, missiles
+src/weapons.js         pooled bolt projectiles, homing, collision
+src/enemies.js         5 typed enemies, per-class Newtonian behaviours, quotas
+src/pods.js            protect-the-pods objective + Raider capture
 src/ships.js           hand-built low-poly dart + pod meshes with vector edges
-src/levels.js          enemy stats + level goal tables
+src/levels.js          enemy roster + behaviours + level goal tables
 src/explosions.js      wire shells + spark sprays
 src/starfield.js       wrapping point stars + reference grid
 src/radar.js           the scanner (own scene + tilted viewport)
@@ -313,24 +347,27 @@ server/bots.js         (phase 2) server-side AI
 
 | Param | Where | Current |
 |---|---|---|
-| `maxThrust`, `boostMult`, `drag`, `maxSpeed` | `player.js` | 260, 2.4, 0.16, 520 |
+| `thrustAccel`, `brakeAccel`, `boostMult`, `drag`, `maxSpeed` | `player.js` | 240, 320, 2.4, 0.02, 620 |
 | `turnFactor`, `rollRate` | `player.js` | 1.9, 2.0 |
 | `mouseGain`, `intentLag`, `mouseRecenter` | `player.js` | 0.0042, 8, 0.35 |
 | `fireInterval`, missiles max, regen period | `player.js` | 0.16 s, 20, 2.2 s |
-| projectile dmg (player / enemy) | `weapons.js` | 12 / 9 |
+| projectile dmg: player→enemy / enemy→player / enemy→pod | `weapons.js` | 12 / 9 / 8 |
+| enemy `thrust` / `vmax` multipliers of Speed F. | `enemies.js` | 2.4× / 2.2× |
 | `SPEED_K`, `TURN_K`, `SHIELD_K` | `levels.js` | 0.19, 0.062, 12 |
-| AI distance bands | `enemies.js` | 950 / 550 |
-| scanner `range`, `halfWidth`, `depth`, `vScale` | `radar.js` | 2600, 10, 13, 1.15 |
-| ram damage / knockback | `enemies.js` | 26 / 150 |
-| pod count / hp / score | `pods.js`, `main.js` | 6 / 18 / 75 |
+| Raider haul `vmax` / steal distance | `enemies.js` | 95 / 2600 |
+| `SHIP_SCALE` | `ships.js` | 2.0 |
+| scanner `ranges[]`, `halfW`, `depth`, `vScale` | `radar.js` | 800..8000, 10, 13, 1.15 |
+| ram: enemy→player dmg / knockback; enemy→pod dmg | `enemies.js` | 26 / 150 ; 20 |
+| `PODS_PER_LEVEL`, pod `hp` | `levels.js`, `pods.js` | 6 / 24 |
 
 ## 18. Open questions
 
 - Does the intent marker auto-center, or is centering fully manual (more
   authentic, harder)?
 - Missile economy: hard cap like the original (16–20, pickups) or slow regen?
-- Ram damage — currently frequent because AI beelines; raise break-off distance
-  or make contact glancing?
+- Pod fragility / enemy pod-DPS — a level is lost fast if you don't engage; is
+  the current balance too punishing?
+- Should losing all pods restart the level, drop back a level, or end the run?
 - Level pacing — kills-per-minute target, and how fast quotas scale.
 - Snapshot format: stay JSON or go binary (Float32Array) before it matters?
-- Co-op friendly fire on/off.
+- Co-op friendly fire on/off (player→pod is already off).
