@@ -20,9 +20,8 @@ export class Player {
     this.maxHull = 100;
     this.alive = true;
 
-    this.missiles = 20;
-    this.maxMissiles = 20;
-    this._regen = 0;
+    this.missiles = 16;       // guided missiles (the dull cannon is unlimited)
+    this.maxMissiles = 16;
 
     // control state (each component roughly -1..1, fraction of full deflection)
     this.mouse = new THREE.Vector2(0, 0);   // raw cursor (tiny white rect)
@@ -39,8 +38,12 @@ export class Player {
     this.mouseRecenter = 0.35; // gentle pull of the cursor back to centre
     this.turnFactor = 1.9;     // rad/s at full deflection
     this.rollRate = 2.0;
-    this.fireInterval = 0.16;
-    this._fireCd = 0;
+    this.gunInterval = 0.1;    // unlimited dull cannon
+    this.missileInterval = 0.35;
+    this.missileMuzzle = 700;  // constant added to ship momentum on launch
+    this.missileLife = 4.5;    // limited lifespan (s)
+    this._gunCd = 0;
+    this._mslCd = 0;
 
     this._dq = new THREE.Quaternion();
     this._e = new THREE.Euler();
@@ -53,11 +56,7 @@ export class Player {
   speed() { return this.velocity.length(); }
 
   update(dt, input, weapons, enemies, audio) {
-    this._regen += dt;
-    if (this._regen >= 2.2 && this.missiles < this.maxMissiles) {
-      this._regen = 0;
-      this.missiles++;
-    }
+    // missiles are a limited resource — refilled only on respawn / new level
     if (!this.alive) return;
 
     // --- cursor + deployed intent marker ---
@@ -105,20 +104,31 @@ export class Player {
     if (this.velocity.length() > this.maxSpeed) this.velocity.setLength(this.maxSpeed);
     this.position.addScaledVector(this.velocity, dt);
 
-    // --- fire ---
-    this._fireCd -= dt;
-    const wantFire = input.has('Space') || input.mouseFire;
-    if (wantFire && this._fireCd <= 0 && this.missiles > 0) {
-      this._fireCd = this.fireInterval;
-      this.missiles--;
-      const right = this.right(this._r);
-      const muzzle = 1300;
-      const target = enemies ? enemies.nearestInFront(this, 0.9) : null;
+    // --- primary: unlimited dull cannon (Space / LMB) ---
+    this._gunCd -= dt;
+    const right = this.right(this._r);
+    if ((input.has('Space') || input.mouseFire) && this._gunCd <= 0) {
+      this._gunCd = this.gunInterval;
+      const muzzle = 1500;
       for (const side of [-1, 1]) {
         const p = this.position.clone().addScaledVector(right, side * 6).addScaledVector(fwd, 26);
         const v = this.velocity.clone().addScaledVector(fwd, muzzle);
-        weapons.spawn(p, v, 'player', 2.6, target);
+        weapons.spawn(p, v, 'player', 2.0, null, 'bolt');
       }
+      audio?.laser();
+    }
+
+    // --- secondary: guided missile (F / RMB), one on screen, limited ammo ---
+    this._mslCd -= dt;
+    const wantMissile = input.has('KeyF') || input.mouseRight;
+    if (wantMissile && this._mslCd <= 0 && this.missiles > 0 && !weapons.playerMissileActive()) {
+      this._mslCd = this.missileInterval;
+      this.missiles--;
+      const target = enemies ? enemies.nearestInFront(this, 0.2) : null;
+      const p = this.position.clone().addScaledVector(fwd, 30);
+      // launch straight ahead: ship momentum + a constant forward
+      const v = this.velocity.clone().addScaledVector(fwd, this.missileMuzzle);
+      weapons.spawn(p, v, 'player', this.missileLife, target, 'missile');
       audio?.laser();
     }
   }

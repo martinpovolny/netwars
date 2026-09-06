@@ -17,9 +17,16 @@ export class HUD {
     this.axisLabel = document.getElementById('axis-label');
     this.radarLabel = document.getElementById('radar-label');
     this._flash = 0;
+    this._helpT = 0;
   }
 
-  hideHelp() { this.help.classList.add('hidden'); }
+  hideHelp() { this.help.classList.add('hidden'); this._helpT = 0; }
+
+  // show the key list for a few seconds (H)
+  showHelp(seconds = 4) {
+    this.help.classList.remove('hidden');
+    this._helpT = seconds;
+  }
 
   flash(text, hold = 1.8) {
     this.msg.textContent = text;
@@ -53,8 +60,11 @@ export class HUD {
     for (const k of Object.keys(enemies.goals)) {
       if (enemies.goals[k] > 0) parts.push(`${ENEMY_TYPES[k].name}×${enemies.goals[k]}`);
     }
-    if (radar) parts.push(`Scan ${radar.range}`);
     this.obj.textContent = parts.join('   ');
+
+    if (radar && this.radarLabel) {
+      this.radarLabel.textContent = `Scanner  Z${radar.zoomLevel}/${radar.maxZoom} · ${radar.range}`;
+    }
 
     if (this.podsEl) {
       this.podsEl.textContent = `Pods ${pods.alive}/${pods.total}`;
@@ -64,6 +74,10 @@ export class HUD {
     if (this._flash > 0) {
       this._flash -= dt;
       if (this._flash <= 0) this.msg.style.opacity = '0';
+    }
+    if (this._helpT > 0) {
+      this._helpT -= dt;
+      if (this._helpT <= 0) this.help.classList.add('hidden');
     }
   }
 }

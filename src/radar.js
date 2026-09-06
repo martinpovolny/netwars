@@ -66,6 +66,10 @@ export class Radar {
     this.range = this.ranges[this.rangeIndex];
   }
 
+  // level 1 = most zoomed in (shortest range) .. N = most zoomed out
+  get zoomLevel() { return this.ranges.length - this.rangeIndex; }
+  get maxZoom() { return this.ranges.length; }
+
   _place(b, rel, color) {
     const s = this.halfW / this.range;
     let x = rel.x * s;

@@ -7,6 +7,7 @@ export class Input {
     this._my = 0;
     this.locked = false;
     this.mouseFire = false;
+    this.mouseRight = false;
 
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
@@ -26,8 +27,13 @@ export class Input {
     dom.addEventListener('mousedown', (e) => {
       if (!this.locked) { this.dom.requestPointerLock(); return; }
       if (e.button === 0) this.mouseFire = true;
+      if (e.button === 2) this.mouseRight = true;
     });
-    window.addEventListener('mouseup', (e) => { if (e.button === 0) this.mouseFire = false; });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseFire = false;
+      if (e.button === 2) this.mouseRight = false;
+    });
+    dom.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   has(code) { return this.keys.has(code); }

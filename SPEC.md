@@ -74,7 +74,8 @@ The steering model is the distinctive part and must match NetWars:
 | `A` / `D` | Roll left / right (`rollRate` ≈ 2.0 rad/s) |
 | `Shift` | Extra thrust — shows `EXTRA THRUST` |
 | `Space` | Fire missiles |
-| `[` / `]` | Scanner zoom out / in |
+| `[` / `]` | Scanner zoom out / in (5 levels) |
+| `H` | Flash the key list for ~4 s |
 | `R` | Respawn when destroyed |
 
 Later: gamepad, rebindable keys.

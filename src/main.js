@@ -49,14 +49,16 @@ let stateTimer = 0;
 
 enemies.onKill = (e) => { score += e.stats.score; };
 
-window.__nw = { scene, camera, player, enemies, pods, weapons, explosions, radar, paused: false, get score() { return score; }, get state() { return state; } };
+window.__nw = { scene, camera, player, enemies, pods, weapons, explosions, radar, input, audio, hud, paused: false, get score() { return score; }, get state() { return state; } };
 
 canvas.addEventListener('mousedown', () => { audio.resume(); hud.hideHelp(); }, { once: true });
 
 window.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
   if (e.code === 'KeyR' && !player.alive) player.reset();
-  if (e.code === 'BracketRight' || e.code === 'Equal') radar.zoom(1);   // ] or =  -> zoom in (shorter range)
-  if (e.code === 'BracketLeft' || e.code === 'Minus') radar.zoom(-1);   // [ or -  -> zoom out (longer range)
+  if (e.code === 'KeyH') hud.showHelp(4);
+  if (e.code === 'BracketRight' || e.code === 'Equal') { radar.zoom(1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
+  if (e.code === 'BracketLeft' || e.code === 'Minus') { radar.zoom(-1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
 });
 
 function startLevel(n) {

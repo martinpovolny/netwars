@@ -91,12 +91,13 @@
   #dead small { display: block; margin-top: 10px; font-size: 15px; color: #ff8; }
 
   /* inset labels (viewports themselves are drawn by WebGL) */
-  #axis-label  { position: absolute; left: 20px;  top: 156px; color: var(--green); font-size: 12px; }
-  #radar-label { position: absolute; right: 20px; bottom: 196px; color: var(--grid); font-size: 12px; }
+  #axis-label  { position: absolute; left: 20px;  top: 156px; color: var(--green); font-size: 12px; white-space: nowrap; }
+  #radar-label { position: absolute; right: 20px; bottom: 196px; color: var(--grid); font-size: 12px; white-space: nowrap; }
 
   #help {
-    position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
-    color: #ff8; font-size: 12px; opacity: 0.9; white-space: nowrap;
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    color: #ff8; font-size: 11px; opacity: 0.9; text-align: center;
+    max-width: 94vw; line-height: 1.7;
   }
   #help.hidden { display: none; }
 </style>
@@ -144,7 +145,7 @@
   <div id="axis-label">Orientation</div>
   <div id="radar-label">Scanner</div>
 
-  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space fire &nbsp;·&nbsp; [ / ] scan zoom</div>
+  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space cannon &nbsp;·&nbsp; F / RMB missile &nbsp;·&nbsp; [ / ] scan zoom &nbsp;·&nbsp; H help</div>
 </div>
 
 <script type="importmap">

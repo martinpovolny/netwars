@@ -267,6 +267,7 @@ export class Enemies {
     this.goals = {};
     this.pending = {};
     this.onKill = null;   // (enemy) => void  — set by main for scoring
+    this._leash = new THREE.Vector3();
   }
 
   startLevel(n) {
@@ -348,7 +349,17 @@ export class Enemies {
   }
 
   update(dt, player, pods, weapons, audio) {
-    for (const e of this.list) if (!e.dead) e.update(dt, player, pods, weapons, audio);
+    for (const e of this.list) {
+      if (e.dead) continue;
+      e.update(dt, player, pods, weapons, audio);
+      // leash: never let an enemy stray so far the level can't be finished
+      const d = e.position.distanceTo(player.position);
+      if (d > 5000) {
+        const back = this._leash.copy(player.position).sub(e.position).multiplyScalar(1 / d);
+        e.velocity.addScaledVector(back, e.thrust * 4 * dt);
+        if (d > 6500) e.position.copy(player.position).addScaledVector(back, -4500);
+      }
+    }
 
     const keep = [];
     for (const e of this.list) {
