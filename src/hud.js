@@ -10,6 +10,7 @@ export class HUD {
     this.dead = document.getElementById('dead');
     this.help = document.getElementById('help');
     this.obj = document.getElementById('obj');
+    this.podsEl = document.getElementById('pods');
     this.intent = document.getElementById('intent');
     this.mouse = document.getElementById('mouse');
     this.boost = document.getElementById('boost');
@@ -34,7 +35,7 @@ export class HUD {
     this.radarLabel.style.bottom = (radar.bottom + radar.h + 6) + 'px';
   }
 
-  update(dt, player, enemies, score) {
+  update(dt, player, enemies, pods, score, radar) {
     this.score.textContent = String(score).padStart(6, '0');
     this.missiles.textContent = player.missiles;
     this.vel.style.height = Math.min(100, 100 * player.speed() / player.maxSpeed) + '%';
@@ -46,13 +47,19 @@ export class HUD {
     const maxY = window.innerHeight * 0.34;
     this.intent.style.transform = `translate(${player.intent.x * maxX}px, ${player.intent.y * maxY}px)`;
     this.mouse.style.transform = `translate(${player.mouse.x * maxX}px, ${player.mouse.y * maxY}px)`;
-    this.boost.classList.toggle('on', player.boosting && player.throttle > 0);
+    this.boost.classList.toggle('on', player.boosting && player.thrusting !== 0);
 
     const parts = [`Level ${enemies.level}`];
     for (const k of Object.keys(enemies.goals)) {
       if (enemies.goals[k] > 0) parts.push(`${ENEMY_TYPES[k].name}×${enemies.goals[k]}`);
     }
+    if (radar) parts.push(`Scan ${radar.range}`);
     this.obj.textContent = parts.join('   ');
+
+    if (this.podsEl) {
+      this.podsEl.textContent = `Pods ${pods.alive}/${pods.total}`;
+      this.podsEl.classList.toggle('crit', pods.alive <= 2);
+    }
 
     if (this._flash > 0) {
       this._flash -= dt;

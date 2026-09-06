@@ -94,26 +94,15 @@ export class Weapons {
       // collisions
       let hit = false;
       if (this.team[i] === 'player') {
+        // player fire hits enemies only — no friendly fire on the pods
         for (const e of enemies.list) {
           if (e.dead) continue;
           if (this.pos[i].distanceToSquared(e.position) < e.radius * e.radius) {
             e.hp -= 12;
             explosions.spark(this.pos[i]);
-            if (e.hp <= 0) { e.dead = true; explosions.blast(e.position, 0xffcc55); audio?.boom(); onKill?.('enemy', e); }
+            if (e.hp <= 0) { e.dead = true; explosions.blast(e.position, 0xffcc55); audio?.boom(); }
             hit = true;
             break;
-          }
-        }
-        if (!hit) {
-          for (const pod of pods.list) {
-            if (pod.dead) continue;
-            if (this.pos[i].distanceToSquared(pod.position) < pod.radius * pod.radius) {
-              pod.hp -= 12;
-              explosions.spark(this.pos[i]);
-              if (pod.hp <= 0) { pod.dead = true; explosions.blast(pod.position, 0xff5ad0); audio?.boom(); onKill?.('pod', pod); }
-              hit = true;
-              break;
-            }
           }
         }
       } else if (this.team[i] === 'enemy') {
@@ -121,6 +110,18 @@ export class Weapons {
           player.damage(9, audio);
           explosions.spark(this.pos[i]);
           hit = true;
+        }
+        if (!hit) {
+          for (const pod of pods.list) {
+            if (pod.dead) continue;
+            if (this.pos[i].distanceToSquared(pod.position) < pod.radius * pod.radius) {
+              pod.hp -= 8;
+              explosions.spark(this.pos[i]);
+              if (pod.hp <= 0) { pod.dead = true; explosions.blast(pod.position, 0xff5ad0); audio?.boom(); onKill?.('podlost', pod); }
+              hit = true;
+              break;
+            }
+          }
         }
       }
       if (hit) this.ttl[i] = 0;

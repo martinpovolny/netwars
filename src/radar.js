@@ -6,16 +6,19 @@ import * as THREE from 'three';
 // showing the third dimension on a flat radar.
 export class Radar {
   constructor() {
-    this.range = 2600;       // world units mapped to grid half-width
+    // selectable scan range (world units mapped to the grid edge)
+    this.ranges = [800, 1500, 2600, 4500, 8000];
+    this.rangeIndex = 2;
+    this.range = this.ranges[this.rangeIndex];
     this.halfW = 10;         // grid half-width in radar space
     this.vScale = 1.15;      // altitude exaggeration for readability
 
     this.depth = 13;         // grid half-depth in radar space (forward & aft)
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(42, 1.6, 0.1, 100);
-    this.camera.position.set(0, 11, 17);
-    this.camera.lookAt(0, 0, -1);
+    this.camera = new THREE.PerspectiveCamera(40, 1.6, 0.1, 100);
+    this.camera.position.set(0, 13, 21);
+    this.camera.lookAt(0, 0, -2);
 
     // grid lines on y=0, symmetric so the ship sits at the centre
     const seg = [];
@@ -55,6 +58,12 @@ export class Radar {
 
     this._inv = new THREE.Quaternion();
     this._rel = new THREE.Vector3();
+  }
+
+  // dir > 0 zooms in (shorter range), dir < 0 zooms out (longer range)
+  zoom(dir) {
+    this.rangeIndex = THREE.MathUtils.clamp(this.rangeIndex - Math.sign(dir), 0, this.ranges.length - 1);
+    this.range = this.ranges[this.rangeIndex];
   }
 
   _place(b, rel, color) {

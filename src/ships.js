@@ -29,6 +29,9 @@ const TRIS = [
   [4, 11, 12],                               // fin
 ];
 
+// global size multiplier — NetWars ships loom large and fights are close
+export const SHIP_SCALE = 2.0;
+
 function dartGeometry(scale) {
   const pos = [];
   for (const [a, b, c] of TRIS) {
@@ -44,7 +47,8 @@ function dartGeometry(scale) {
 
 export function makeDart(accent = 0xff4040, bulk = 1) {
   const g = new THREE.Group();
-  const geo = dartGeometry(bulk);
+  const sc = bulk * SHIP_SCALE;
+  const geo = dartGeometry(sc);
 
   const hull = new THREE.Mesh(
     geo,
@@ -59,18 +63,18 @@ export function makeDart(accent = 0xff4040, bulk = 1) {
   g.add(edges);
 
   const canopy = new THREE.Mesh(
-    new THREE.ConeGeometry(1.7 * bulk, 6 * bulk, 4),
+    new THREE.ConeGeometry(1.7 * sc, 6 * sc, 4),
     new THREE.MeshStandardMaterial({ color: accent, flatShading: true, roughness: 0.4 })
   );
   canopy.rotation.x = -Math.PI / 2;
-  canopy.position.set(0, 1.6 * bulk, -3 * bulk);
+  canopy.position.set(0, 1.6 * sc, -3 * sc);
   canopy.scale.set(1, 0.6, 1.7);
   g.add(canopy);
 
-  const stripeGeo = new THREE.BoxGeometry(0.8 * bulk, 0.8 * bulk, 22 * bulk);
+  const stripeGeo = new THREE.BoxGeometry(0.8 * sc, 0.8 * sc, 22 * sc);
   for (const sx of [-1, 1]) {
     const s = new THREE.Mesh(stripeGeo, new THREE.MeshStandardMaterial({ color: accent, flatShading: true, roughness: 0.4 }));
-    s.position.set(sx * 6 * bulk, -1 * bulk, 3 * bulk);
+    s.position.set(sx * 6 * sc, -1 * sc, 3 * sc);
     s.rotation.y = -sx * 0.5;
     g.add(s);
   }
@@ -81,7 +85,8 @@ export function makeDart(accent = 0xff4040, bulk = 1) {
 // Pink faceted pod with little white antenna spikes (NetWars "pods").
 export function makePod() {
   const g = new THREE.Group();
-  const geo = new THREE.OctahedronGeometry(9, 0);
+  const R = 22;
+  const geo = new THREE.OctahedronGeometry(R, 0);
   const body = new THREE.Mesh(
     geo,
     new THREE.MeshStandardMaterial({ color: 0xd93bd0, flatShading: true, emissive: 0x3a0038, roughness: 0.6 })
@@ -91,7 +96,7 @@ export function makePod() {
 
   const pts = [];
   for (const v of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
-    pts.push(v[0] * 9, v[1] * 9, v[2] * 9, v[0] * 14, v[1] * 14, v[2] * 14);
+    pts.push(v[0] * R, v[1] * R, v[2] * R, v[0] * R * 1.6, v[1] * R * 1.6, v[2] * R * 1.6);
   }
   const ag = new THREE.BufferGeometry();
   ag.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));

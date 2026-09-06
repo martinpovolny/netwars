@@ -14,8 +14,8 @@ export class Player {
     this.quaternion = new THREE.Quaternion();
     this.velocity = new THREE.Vector3();
 
-    this.throttle = 0;
     this.boosting = false;
+    this.thrusting = 0;        // -1 reverse, 0, +1 forward (for the HUD)
     this.hull = 100;
     this.maxHull = 100;
     this.alive = true;
@@ -28,11 +28,12 @@ export class Player {
     this.mouse = new THREE.Vector2(0, 0);   // raw cursor (tiny white rect)
     this.intent = new THREE.Vector2(0, 0);  // deployed direction marker
 
-    // tuning
-    this.maxThrust = 260;
+    // tuning — Newtonian: thrust/reverse are impulses, momentum persists
+    this.thrustAccel = 240;   // u/s^2 along the nose
+    this.brakeAccel = 320;    // u/s^2 bleeding speed along the facing axis
     this.boostMult = 2.4;
-    this.drag = 0.16;
-    this.maxSpeed = 520;
+    this.drag = 0.02;         // almost none — momentum stays
+    this.maxSpeed = 620;
     this.mouseGain = 0.0042;   // px -> deflection
     this.intentLag = 8;        // how fast the marker chases the cursor
     this.mouseRecenter = 0.35; // gentle pull of the cursor back to centre
@@ -80,20 +81,27 @@ export class Player {
     this._dq.setFromEuler(this._e);
     this.quaternion.multiply(this._dq).normalize();
 
-    // --- throttle ---
-    const tRate = 0.9;
-    if (input.has('KeyW') || input.has('ArrowUp')) this.throttle += tRate * dt;
-    if (input.has('KeyS') || input.has('ArrowDown')) this.throttle -= tRate * dt;
-    if (input.has('KeyX')) this.throttle = 0;
-    this.throttle = THREE.MathUtils.clamp(this.throttle, 0, 1);
-
-    // --- thrust + inertia ---
+    // --- thrust / reverse: impulses along the nose; momentum persists ---
     this.boosting = input.has('ShiftLeft') || input.has('ShiftRight');
-    const thrust = this.maxThrust * this.throttle * (this.boosting ? this.boostMult : 1);
+    const boost = this.boosting ? this.boostMult : 1;
     const fwd = this.forward(this._f);
-    this.velocity.addScaledVector(fwd, thrust * dt);
-    const brake = input.has('KeyC') ? 7 : 1;
-    this.velocity.multiplyScalar(Math.max(0, 1 - this.drag * brake * dt));
+
+    let thrusting = 0;
+    if (input.has('KeyW') || input.has('ArrowUp')) thrusting += 1;
+    if (input.has('KeyS') || input.has('ArrowDown')) thrusting -= 1;
+    this.thrusting = thrusting;
+    if (thrusting) this.velocity.addScaledVector(fwd, thrusting * this.thrustAccel * boost * dt);
+
+    // brake (C): bleed off speed along the facing axis, either direction
+    if (input.has('KeyC')) {
+      const along = this.velocity.dot(fwd);
+      const cut = Math.sign(along) * Math.min(Math.abs(along), this.brakeAccel * dt);
+      this.velocity.addScaledVector(fwd, -cut);
+    }
+    // full stop (X): quickly null all momentum
+    if (input.has('KeyX')) this.velocity.multiplyScalar(Math.max(0, 1 - 4 * dt));
+
+    this.velocity.multiplyScalar(Math.max(0, 1 - this.drag * dt));
     if (this.velocity.length() > this.maxSpeed) this.velocity.setLength(this.maxSpeed);
     this.position.addScaledVector(this.velocity, dt);
 
@@ -129,7 +137,7 @@ export class Player {
     this.position.set(0, 0, 0);
     this.quaternion.identity();
     this.velocity.set(0, 0, 0);
-    this.throttle = 0;
+    this.thrusting = 0;
     this.hull = this.maxHull;
     this.missiles = this.maxMissiles;
     this.mouse.set(0, 0);
