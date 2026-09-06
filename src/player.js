@@ -19,6 +19,7 @@ export class Player {
     this.hull = 100;
     this.maxHull = 100;
     this.alive = true;
+    this.invuln = 0;         // brief grace after (re)spawn
 
     this.missiles = 16;       // guided missiles (the dull cannon is unlimited)
     this.maxMissiles = 16;
@@ -57,6 +58,7 @@ export class Player {
 
   update(dt, input, weapons, enemies, audio) {
     // missiles are a limited resource — refilled only on respawn / new level
+    if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
     if (!this.alive) return;
 
     // --- cursor + deployed intent marker ---
@@ -134,7 +136,7 @@ export class Player {
   }
 
   damage(amount, audio) {
-    if (!this.alive) return;
+    if (!this.alive || this.invuln > 0) return;
     this.hull -= amount;
     audio?.hit();
     if (this.hull <= 0) {
@@ -143,6 +145,7 @@ export class Player {
     }
   }
 
+  // full reset — used when a level (re)starts
   reset() {
     this.position.set(0, 0, 0);
     this.quaternion.identity();
@@ -152,6 +155,19 @@ export class Player {
     this.missiles = this.maxMissiles;
     this.mouse.set(0, 0);
     this.intent.set(0, 0);
+    this.invuln = 1.5;
+    this.alive = true;
+  }
+
+  // respawn in place after being destroyed — the level continues
+  respawn() {
+    this.velocity.set(0, 0, 0);
+    this.thrusting = 0;
+    this.hull = this.maxHull;
+    this.missiles = this.maxMissiles;
+    this.mouse.set(0, 0);
+    this.intent.set(0, 0);
+    this.invuln = 2.0;
     this.alive = true;
   }
 }

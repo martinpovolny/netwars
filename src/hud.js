@@ -8,6 +8,7 @@ export class HUD {
     this.shd = document.getElementById('shd-fill');
     this.msg = document.getElementById('msg');
     this.dead = document.getElementById('dead');
+    this.deadSub = document.getElementById('dead-sub');
     this.help = document.getElementById('help');
     this.obj = document.getElementById('obj');
     this.podsEl = document.getElementById('pods');
@@ -48,6 +49,9 @@ export class HUD {
     this.vel.style.height = Math.min(100, 100 * player.speed() / player.maxSpeed) + '%';
     this.shd.style.height = (100 * player.hull / player.maxHull) + '%';
     this.dead.style.display = player.alive ? 'none' : 'block';
+    if (!player.alive && this.deadSub) {
+      this.deadSub.textContent = `Level ${enemies.level}   Score ${String(score).padStart(6, '0')}`;
+    }
 
     // reticle: deployed intent marker + raw mouse cursor
     const maxX = window.innerWidth * 0.34;

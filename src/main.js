@@ -46,6 +46,7 @@ const hud = new HUD();
 let score = 0;
 let state = 'playing';   // 'playing' | 'won' | 'lost'
 let stateTimer = 0;
+let deadAt = 0;          // performance.now() when the player was destroyed
 
 enemies.onKill = (e) => { score += e.stats.score; };
 
@@ -55,7 +56,11 @@ canvas.addEventListener('mousedown', () => { audio.resume(); hud.hideHelp(); }, 
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  if (e.code === 'KeyR' && !player.alive) player.reset();
+  // dead: the world is frozen — any key launches a fresh ship (after a beat)
+  if (!player.alive) {
+    if (performance.now() - deadAt > 700) player.respawn();
+    return;
+  }
   if (e.code === 'KeyH') hud.showHelp(4);
   if (e.code === 'BracketRight' || e.code === 'Equal') { radar.zoom(1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
   if (e.code === 'BracketLeft' || e.code === 'Minus') { radar.zoom(-1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
@@ -90,21 +95,33 @@ function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
   dt = Math.min(dt, 0.05);
-  if (window.__nw.paused) dt = 0;
+  if (!Number.isFinite(dt) || dt < 0) dt = 0;
+
+  const wasAlive = player.alive;
+  // the world is frozen while dead (or manually paused for debugging)
+  const simDt = (window.__nw.paused || !player.alive) ? 0 : dt;
 
   player.update(dt, input, weapons, enemies, audio);
-  enemies.update(dt, player, pods, weapons, audio);
-  pods.update(dt);
-  if (enemies.checkRam(player, explosions, audio)) hud.flash('COLLISION', 1.2);
-  enemies.checkPodStrikes(pods, explosions, audio);
-  weapons.update(dt, player, enemies, pods, explosions, audio, onWeaponEvent);
-  explosions.update(dt);
+  enemies.update(simDt, player, pods, weapons, audio);
+  pods.update(simDt);
+  if (simDt > 0) {
+    if (enemies.checkRam(player, explosions, audio)) hud.flash('COLLISION', 1.2);
+    enemies.checkPodStrikes(pods, explosions, audio);
+  }
+  weapons.update(simDt, player, enemies, pods, explosions, audio, onWeaponEvent);
+  explosions.update(simDt);
   starfield.update(player);
   radar.update(player, enemies, pods);
   orient.update(player);
 
-  // --- level win / lose -------------------------------------------------
-  if (state === 'playing') {
+  // player just died -> freeze, show the destroyed panel, wait for a key
+  if (wasAlive && !player.alive) {
+    deadAt = now;
+    hud.flash('', 0);
+  }
+
+  // --- level win / lose (only while alive) -----------------------------
+  if (simDt > 0 && state === 'playing') {
     if (pods.alive === 0) {
       state = 'lost';
       stateTimer = 3.0;
@@ -114,8 +131,8 @@ function frame(now) {
       stateTimer = 2.8;
       hud.flash('LEVEL ' + enemies.level + ' CLEARED', 2.8);
     }
-  } else if (dt > 0) {
-    stateTimer -= dt;
+  } else if (simDt > 0 && state !== 'playing') {
+    stateTimer -= simDt;
     if (stateTimer <= 0) {
       startLevel(state === 'won' ? enemies.level + 1 : enemies.level);
     }
