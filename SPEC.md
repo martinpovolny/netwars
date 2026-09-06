@@ -104,18 +104,28 @@ turn nose toward `aimDir` at the class Turn Factor, then thrust / brake. Enemy
 
 ## 6. Weapons
 
-- **Missiles**, limited ammo (`missiles` start/max 20), regenerate 1 per ~2.2 s.
-- Fired in pairs from wing points; cooldown `fireInterval` ≈ 0.16 s.
-- Muzzle speed added to ship velocity: player 1300 u/s, enemy ~950 u/s.
-- Player missiles **lightly home** toward the nearest enemy within a forward
-  cone (velocity lerps toward target dir; weak). NetWars missiles tracked a bit.
-- Damage: player hit = 12 to enemy shields; enemy hit = 9 to player hull.
-- TTL ~2.6 s (player) / 3.0 s (enemy). Pooled (240 max).
-- **Render**: each active shot is a chunky elongated-octahedron **bolt mesh**
-  (~8 u wide, ~26 u long) with a hot white core, additive-blended, oriented
-  along its velocity, plus a short additive trail. Player bolts cyan, enemy
-  bolts orange-red. They must read as substantial objects, not hairlines.
-- Ramming an enemy ship: enemy dies, player takes 26 and is knocked back.
+Two player weapons:
+
+**Cannon** (primary — `Space` / LMB) — **unlimited** dull ammo. Fired in pairs
+from wing points, `gunInterval` ≈ 0.1 s. Muzzle 1500 u/s added to ship velocity.
+No guidance. 8 dmg. Rendered as dim additive tracers (grey-cyan, small).
+
+**Missile** (secondary — `F` / RMB) — **guided**, **one on screen at a time**,
+**limited ammo** (`missiles` 16, no regen; refilled on respawn / new level).
+- Launches straight ahead: `velocity = shipVelocity + missileMuzzle·nose`
+  (`missileMuzzle` 700). Self-propelled (builds speed to ~1500 u/s).
+- Flies straight for `age` < 0.35 s, then homes toward the nearest target in a
+  forward cone (velocity lerps toward target dir).
+- Limited lifespan `missileLife` 4.5 s, then it expires (and frees the "one at
+  a time" slot).
+- 30 dmg. Yellow tiny-missile model (body + nose + fins + additive flame),
+  oriented along velocity, with a yellow trail.
+
+Enemy fire is always cannon-style bolts (orange-red), muzzle ~950 u/s, 9 dmg to
+the player / 8 to a pod.
+
+Projectiles are pooled (240 max). Ramming an enemy ship: enemy dies, player
+takes 26 and is knocked back.
 
 ## 7. HUD
 
@@ -351,8 +361,10 @@ server/bots.js         (phase 2) server-side AI
 | `thrustAccel`, `brakeAccel`, `boostMult`, `drag`, `maxSpeed` | `player.js` | 240, 320, 2.4, 0.02, 620 |
 | `turnFactor`, `rollRate` | `player.js` | 1.9, 2.0 |
 | `mouseGain`, `intentLag`, `mouseRecenter` | `player.js` | 0.0042, 8, 0.35 |
-| `fireInterval`, missiles max, regen period | `player.js` | 0.16 s, 20, 2.2 s |
-| projectile dmg: player→enemy / enemy→player / enemy→pod | `weapons.js` | 12 / 9 / 8 |
+| `gunInterval` / `missileInterval` / `missileMuzzle` / `missileLife` | `player.js` | 0.1 / 0.35 s / 700 / 4.5 s |
+| missiles max (no regen) | `player.js` | 16 |
+| dmg: cannon→enemy / missile→enemy / enemy→player / enemy→pod | `weapons.js` | 8 / 30 / 9 / 8 |
+| enemy leash distance (pull-back / hard snap) | `enemies.js` | 5000 / 6500 |
 | enemy `thrust` / `vmax` multipliers of Speed F. | `enemies.js` | 2.4× / 2.2× |
 | `SPEED_K`, `TURN_K`, `SHIELD_K` | `levels.js` | 0.19, 0.062, 12 |
 | Raider haul `vmax` / steal distance | `enemies.js` | 95 / 2600 |
