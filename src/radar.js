@@ -92,7 +92,7 @@ export class Radar {
     b.line.material.color.setHex(color);
   }
 
-  update(player, enemies, pods) {
+  update(player, enemies, pods, bonuses) {
     this._inv.copy(player.quaternion).invert();
     let i = 0;
 
@@ -108,6 +108,7 @@ export class Radar {
 
     for (const e of enemies.list) if (!e.dead) feed(e, 0xff5555, 0xff1010, 500);
     for (const p of pods.list) if (!p.dead) feed(p, 0xd93bd0, 0xd93bd0, 0);
+    if (bonuses) for (const b of bonuses.list) if (!b.dead) feed(b, b.kind === 'repair' ? 0x2fe06a : 0x3ad0ff, 0xffffff, 0);
 
     for (; i < this.blips.length; i++) {
       this.blips[i].cube.visible = false;

@@ -21,9 +21,11 @@ export class Player {
     this.maxHull = 100;
     this.alive = true;
     this.invuln = 0;         // brief grace after (re)spawn
+    this.hitPulse = 0;       // 0..1, spikes on damage, decays -> drives the red vignette
 
     this.missiles = 16;       // guided missiles (the dull cannon is unlimited)
     this.maxMissiles = 16;
+    this.lockTarget = null;   // enemy currently inside the centre lock ring (set by main)
 
     // control state (each component roughly -1..1, fraction of full deflection)
     this.mouse = new THREE.Vector2(0, 0);   // raw cursor (tiny white rect)
@@ -62,6 +64,7 @@ export class Player {
   update(dt, input, weapons, enemies, audio) {
     // missiles are a limited resource — refilled only on respawn / new level
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
+    if (this.hitPulse > 0) this.hitPulse = Math.max(0, this.hitPulse - dt * 3.5);
     if (!this.alive) return;
 
     // --- cursor + deployed intent marker ---
@@ -135,7 +138,9 @@ export class Player {
     if (wantMissile && this._mslCd <= 0 && this.missiles > 0 && !weapons.playerMissileActive()) {
       this._mslCd = this.missileInterval;
       this.missiles--;
-      const target = enemies ? enemies.nearestInFront(this, 0.2) : null;
+      // guides only if something is locked in the centre ring at launch;
+      // otherwise it flies ballistic (no re-acquire)
+      const target = this.lockTarget && !this.lockTarget.dead ? this.lockTarget : null;
       // launch from a belly rail: slightly ahead and low
       const p = this.position.clone().addScaledVector(fwd, 6).addScaledVector(up, -4);
       // straight ahead: ship momentum + a constant forward
@@ -145,9 +150,13 @@ export class Player {
     }
   }
 
+  giveMissiles(n) { this.missiles = Math.min(this.maxMissiles, this.missiles + n); }
+  repair(n) { this.hull = Math.min(this.maxHull, this.hull + n); }
+
   damage(amount, audio) {
     if (!this.alive || this.invuln > 0) return;
     this.hull -= amount;
+    this.hitPulse = 1;
     audio?.hit();
     if (this.hull <= 0) {
       this.hull = 0;
@@ -166,6 +175,7 @@ export class Player {
     this.mouse.set(0, 0);
     this.intent.set(0, 0);
     this.invuln = 1.5;
+    this.hitPulse = 0;
     this.alive = true;
   }
 
@@ -178,6 +188,7 @@ export class Player {
     this.mouse.set(0, 0);
     this.intent.set(0, 0);
     this.invuln = 2.0;
+    this.hitPulse = 0;
     this.alive = true;
   }
 }

@@ -5,6 +5,7 @@ import { Player } from './player.js';
 import { Weapons } from './weapons.js';
 import { Enemies } from './enemies.js';
 import { Pods } from './pods.js';
+import { Bonuses } from './bonuses.js';
 import { Explosions } from './explosions.js';
 import { Starfield } from './starfield.js';
 import { Radar } from './radar.js';
@@ -38,6 +39,7 @@ const weapons = new Weapons(scene);
 const explosions = new Explosions(scene);
 const enemies = new Enemies(scene);
 const pods = new Pods(scene);
+const bonuses = new Bonuses(scene);
 const starfield = new Starfield(scene);
 const radar = new Radar();
 const orient = new OrientationInset();
@@ -50,13 +52,13 @@ let deadAt = 0;          // performance.now() when the player was destroyed
 
 enemies.onKill = (e) => { score += e.stats.score; };
 
-window.__nw = { scene, camera, player, enemies, pods, weapons, explosions, radar, input, audio, hud, paused: false, get score() { return score; }, get state() { return state; } };
+window.__nw = { scene, camera, player, enemies, pods, bonuses, weapons, explosions, radar, input, audio, hud, paused: false, get score() { return score; }, get state() { return state; } };
 
 canvas.addEventListener('mousedown', () => { audio.resume(); hud.hideHelp(); }, { once: true });
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  // dead: the world is frozen — any key launches a fresh ship (after a beat)
+  // dead: the fight goes on without you — any key (after a beat) relaunches
   if (!player.alive) {
     if (performance.now() - deadAt > 700) player.respawn();
     return;
@@ -69,6 +71,7 @@ window.addEventListener('keydown', (e) => {
 function startLevel(n) {
   enemies.startLevel(n);
   pods.spawnLevel(PODS_PER_LEVEL, player.position);
+  bonuses.reset();
   player.reset();
   state = 'playing';
   hud.flash('LEVEL ' + n, 2.2);
@@ -88,6 +91,36 @@ const onWeaponEvent = (kind) => {
   if (kind === 'podlost') hud.flash('POD DOWN', 1.0);
 };
 
+// spectator camera state (while the player is dead the world keeps running)
+const UP = new THREE.Vector3(0, 1, 0);
+const specPos = new THREE.Vector3();
+const specQuat = new THREE.Quaternion();
+const _lookM = new THREE.Matrix4();
+const _lookAt = new THREE.Vector3();
+const _targetQ = new THREE.Quaternion();
+
+// missile lock: nearest enemy whose screen position sits inside the centre ring
+const LOCK_PX = 64;                 // must match #lock ring radius
+const _ndc = new THREE.Vector3();
+function computeLock(W, H) {
+  if (!player.alive) return null;
+  let best = null;
+  let bestDist = Infinity;
+  const cx = W / 2;
+  const cy = H / 2;
+  for (const e of enemies.list) {
+    if (e.dead) continue;
+    _ndc.copy(e.position).project(camera);
+    if (_ndc.z >= 1) continue;                     // behind camera / clipped
+    const sx = (_ndc.x * 0.5 + 0.5) * W;
+    const sy = (-_ndc.y * 0.5 + 0.5) * H;
+    if (Math.hypot(sx - cx, sy - cy) > LOCK_PX) continue;   // outside the ring
+    const d = e.position.distanceToSquared(player.position);
+    if (d < bestDist) { bestDist = d; best = e; }
+  }
+  return best;
+}
+
 let last = performance.now();
 
 function frame(now) {
@@ -98,12 +131,20 @@ function frame(now) {
   if (!Number.isFinite(dt) || dt < 0) dt = 0;
 
   const wasAlive = player.alive;
-  // the world is frozen while dead (or manually paused for debugging)
-  const simDt = (window.__nw.paused || !player.alive) ? 0 : dt;
+  // the world keeps simulating even when the player is dead (spectating);
+  // only a manual debug pause freezes it
+  const simDt = window.__nw.paused ? 0 : dt;
 
   player.update(dt, input, weapons, enemies, audio);
   enemies.update(simDt, player, pods, weapons, audio);
   pods.update(simDt);
+  const got = bonuses.update(simDt, player, pods.alive ? pods.centroid : player.position);
+  if (got) {
+    if (got.kind === 'missiles') { player.giveMissiles(6); hud.flash('+6 MISSILES', 1.4); }
+    else { player.repair(35); hud.flash('+35 HULL', 1.4); }
+    explosions.hit(player.position, got.kind === 'repair' ? 0x2fe06a : 0x3ad0ff);
+    audio.pickup();
+  }
   if (simDt > 0) {
     if (enemies.checkRam(player, explosions, audio)) hud.flash('COLLISION', 1.2);
     enemies.checkPodStrikes(pods, explosions, audio);
@@ -111,17 +152,19 @@ function frame(now) {
   weapons.update(simDt, player, enemies, pods, explosions, audio, onWeaponEvent);
   explosions.update(simDt);
   starfield.update(player);
-  radar.update(player, enemies, pods);
+  radar.update(player, enemies, pods, bonuses);
   orient.update(player);
 
-  // player just died -> freeze, show the destroyed panel, wait for a key
+  // player just died -> mark the moment, hold the spectator camera here
   if (wasAlive && !player.alive) {
     deadAt = now;
+    specPos.copy(player.position);
+    specQuat.copy(player.quaternion);
     hud.flash('', 0);
   }
 
-  // --- level win / lose (only while alive) -----------------------------
-  if (simDt > 0 && state === 'playing') {
+  // --- level win / lose (paused while the player is dead) --------------
+  if (simDt > 0 && player.alive && state === 'playing') {
     if (pods.alive === 0) {
       state = 'lost';
       stateTimer = 3.0;
@@ -131,16 +174,31 @@ function frame(now) {
       stateTimer = 2.8;
       hud.flash('LEVEL ' + enemies.level + ' CLEARED', 2.8);
     }
-  } else if (simDt > 0 && state !== 'playing') {
+  } else if (simDt > 0 && player.alive && state !== 'playing') {
     stateTimer -= simDt;
     if (stateTimer <= 0) {
       startLevel(state === 'won' ? enemies.level + 1 : enemies.level);
     }
   }
 
-  // first-person cockpit camera
-  camera.position.copy(player.position);
-  camera.quaternion.copy(player.quaternion);
+  // camera: first-person while alive; a fixed wreck-cam that pans to the
+  // nearest action while dead
+  if (player.alive) {
+    camera.position.copy(player.position);
+    camera.quaternion.copy(player.quaternion);
+  } else {
+    _lookAt.copy(pods.centroid);
+    let nd = Infinity;
+    for (const e of enemies.list) {
+      const d = e.position.distanceToSquared(specPos);
+      if (d < nd) { nd = d; _lookAt.copy(e.position); }
+    }
+    _lookM.lookAt(specPos, _lookAt, UP);
+    _targetQ.setFromRotationMatrix(_lookM);
+    specQuat.slerp(_targetQ, 1 - Math.pow(0.05, dt));
+    camera.position.copy(specPos);
+    camera.quaternion.copy(specQuat);
+  }
 
   const W = window.innerWidth;
   const H = window.innerHeight;
@@ -159,8 +217,17 @@ function frame(now) {
 
   renderer.setViewport(0, 0, W, H);
 
+  // missile lock is computed from the freshly-updated camera; used by the
+  // NEXT frame's missile launch and drawn this frame by the HUD
+  const lockTarget = computeLock(W, H);
+  player.lockTarget = lockTarget;
+
   hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
-  hud.update(dt, player, enemies, pods, score, radar);
+  hud.update(dt, player, enemies, pods, score, radar, {
+    locked: !!lockTarget,
+    missileActive: weapons.playerMissileActive(),
+    missileGuided: weapons.playerMissileGuided(),
+  });
 }
 
 startLevel(1);
