@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 const FWD = new THREE.Vector3(0, 0, -1);
 const RIGHT = new THREE.Vector3(1, 0, 0);
+const UP = new THREE.Vector3(0, 1, 0);
 
 // NetWars-style control:
 //  - the mouse moves a screen-space "deployed" intent marker (`intent`)
@@ -50,10 +51,12 @@ export class Player {
     this._e = new THREE.Euler();
     this._f = new THREE.Vector3();
     this._r = new THREE.Vector3();
+    this._u = new THREE.Vector3();
   }
 
   forward(out = new THREE.Vector3()) { return out.copy(FWD).applyQuaternion(this.quaternion); }
   right(out = new THREE.Vector3()) { return out.copy(RIGHT).applyQuaternion(this.quaternion); }
+  up(out = new THREE.Vector3()) { return out.copy(UP).applyQuaternion(this.quaternion); }
   speed() { return this.velocity.length(); }
 
   update(dt, input, weapons, enemies, audio) {
@@ -107,13 +110,19 @@ export class Player {
     this.position.addScaledVector(this.velocity, dt);
 
     // --- primary: unlimited dull cannon (Space / LMB) ---
+    // fired from wing pods set back beside/below the cockpit, so the bolts
+    // stream forward into view from the sides rather than popping up ahead
     this._gunCd -= dt;
     const right = this.right(this._r);
+    const up = this.up(this._u);
     if ((input.has('Space') || input.mouseFire) && this._gunCd <= 0) {
       this._gunCd = this.gunInterval;
       const muzzle = 1500;
       for (const side of [-1, 1]) {
-        const p = this.position.clone().addScaledVector(right, side * 6).addScaledVector(fwd, 26);
+        const p = this.position.clone()
+          .addScaledVector(right, side * 18)
+          .addScaledVector(up, -4)
+          .addScaledVector(fwd, -10);
         const v = this.velocity.clone().addScaledVector(fwd, muzzle);
         weapons.spawn(p, v, 'player', 2.0, null, 'bolt');
       }
@@ -127,8 +136,9 @@ export class Player {
       this._mslCd = this.missileInterval;
       this.missiles--;
       const target = enemies ? enemies.nearestInFront(this, 0.2) : null;
-      const p = this.position.clone().addScaledVector(fwd, 30);
-      // launch straight ahead: ship momentum + a constant forward
+      // launch from a belly rail: slightly ahead and low
+      const p = this.position.clone().addScaledVector(fwd, 6).addScaledVector(up, -4);
+      // straight ahead: ship momentum + a constant forward
       const v = this.velocity.clone().addScaledVector(fwd, this.missileMuzzle);
       weapons.spawn(p, v, 'player', this.missileLife, target, 'missile');
       audio?.laser();
