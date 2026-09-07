@@ -21,6 +21,7 @@ export class Player {
     this.maxHull = 100;
     this.alive = true;
     this.invuln = 0;         // brief grace after (re)spawn
+    this.hitPulse = 0;       // 0..1, spikes on damage, decays -> drives the red vignette
 
     this.missiles = 16;       // guided missiles (the dull cannon is unlimited)
     this.maxMissiles = 16;
@@ -62,6 +63,7 @@ export class Player {
   update(dt, input, weapons, enemies, audio) {
     // missiles are a limited resource — refilled only on respawn / new level
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
+    if (this.hitPulse > 0) this.hitPulse = Math.max(0, this.hitPulse - dt * 3.5);
     if (!this.alive) return;
 
     // --- cursor + deployed intent marker ---
@@ -148,6 +150,7 @@ export class Player {
   damage(amount, audio) {
     if (!this.alive || this.invuln > 0) return;
     this.hull -= amount;
+    this.hitPulse = 1;
     audio?.hit();
     if (this.hull <= 0) {
       this.hull = 0;
@@ -166,6 +169,7 @@ export class Player {
     this.mouse.set(0, 0);
     this.intent.set(0, 0);
     this.invuln = 1.5;
+    this.hitPulse = 0;
     this.alive = true;
   }
 
@@ -178,6 +182,7 @@ export class Player {
     this.mouse.set(0, 0);
     this.intent.set(0, 0);
     this.invuln = 2.0;
+    this.hitPulse = 0;
     this.alive = true;
   }
 }

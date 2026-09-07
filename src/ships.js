@@ -32,6 +32,16 @@ const TRIS = [
 // global size multiplier — NetWars ships loom large and fights are close
 export const SHIP_SCALE = 2.0;
 
+const _c = new THREE.Color();
+const _c2 = new THREE.Color();
+const _w = new THREE.Color(0xffffff);
+function mix(base, accent, amount) {
+  return _c.set(base).lerp(_c2.set(accent), amount).getHex();
+}
+function bright(accent, amount = 0.5) {
+  return _c.set(accent).lerp(_w, amount).getHex();
+}
+
 function dartGeometry(scale) {
   const pos = [];
   for (const [a, b, c] of TRIS) {
@@ -45,6 +55,7 @@ function dartGeometry(scale) {
   return g;
 }
 
+// swept-delta interceptor — hull strongly tinted toward the class accent
 export function makeDart(accent = 0xff4040, bulk = 1) {
   const g = new THREE.Group();
   const sc = bulk * SHIP_SCALE;
@@ -52,31 +63,78 @@ export function makeDart(accent = 0xff4040, bulk = 1) {
 
   const hull = new THREE.Mesh(
     geo,
-    new THREE.MeshStandardMaterial({ color: 0xc6cdd6, flatShading: true, roughness: 0.7, side: THREE.DoubleSide })
+    new THREE.MeshStandardMaterial({ color: mix(0xc6cdd6, accent, 0.42), flatShading: true, roughness: 0.65, side: THREE.DoubleSide })
   );
   g.add(hull);
 
-  const edges = new THREE.LineSegments(
+  g.add(new THREE.LineSegments(
     new THREE.EdgesGeometry(geo, 18),
-    new THREE.LineBasicMaterial({ color: 0xeef2f6 })
-  );
-  g.add(edges);
+    new THREE.LineBasicMaterial({ color: bright(accent, 0.55) })
+  ));
 
-  const canopy = new THREE.Mesh(
-    new THREE.ConeGeometry(1.7 * sc, 6 * sc, 4),
-    new THREE.MeshStandardMaterial({ color: accent, flatShading: true, roughness: 0.4 })
-  );
+  const trim = new THREE.MeshStandardMaterial({ color: accent, flatShading: true, roughness: 0.35, emissive: mix(0x000000, accent, 0.25) });
+
+  const canopy = new THREE.Mesh(new THREE.ConeGeometry(2.0 * sc, 7 * sc, 4), trim);
   canopy.rotation.x = -Math.PI / 2;
-  canopy.position.set(0, 1.6 * sc, -3 * sc);
-  canopy.scale.set(1, 0.6, 1.7);
+  canopy.position.set(0, 1.7 * sc, -3 * sc);
+  canopy.scale.set(1, 0.6, 1.8);
   g.add(canopy);
 
-  const stripeGeo = new THREE.BoxGeometry(0.8 * sc, 0.8 * sc, 22 * sc);
+  const stripeGeo = new THREE.BoxGeometry(1.1 * sc, 1.0 * sc, 24 * sc);
   for (const sx of [-1, 1]) {
-    const s = new THREE.Mesh(stripeGeo, new THREE.MeshStandardMaterial({ color: accent, flatShading: true, roughness: 0.4 }));
-    s.position.set(sx * 6 * sc, -1 * sc, 3 * sc);
+    const s = new THREE.Mesh(stripeGeo, trim);
+    s.position.set(sx * 7 * sc, -1 * sc, 3 * sc);
     s.rotation.y = -sx * 0.5;
     g.add(s);
+  }
+
+  return g;
+}
+
+// distant-fire sniper — a long needle with a prominent forward gun barrel and
+// a rear fin cluster. Deliberately a very different silhouette from the dart.
+export function makeSniper(accent = 0x3a6bff, bulk = 1.2) {
+  const g = new THREE.Group();
+  const sc = bulk * SHIP_SCALE;
+
+  const bodyGeo = new THREE.CylinderGeometry(2.4 * sc, 1.0 * sc, 30 * sc, 6);
+  bodyGeo.rotateX(-Math.PI / 2);           // long axis -> Z, taper toward nose
+  const hull = new THREE.Mesh(
+    bodyGeo,
+    new THREE.MeshStandardMaterial({ color: mix(0xb9c0c9, accent, 0.5), flatShading: true, roughness: 0.6, side: THREE.DoubleSide })
+  );
+  hull.position.z = 2 * sc;
+  g.add(hull);
+  const hullEdges = new THREE.LineSegments(new THREE.EdgesGeometry(bodyGeo, 20), new THREE.LineBasicMaterial({ color: bright(accent, 0.6) }));
+  hullEdges.position.z = 2 * sc;
+  g.add(hullEdges);
+
+  // forward gun barrel, well past the nose
+  const barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.5 * sc, 1.9 * sc, 26 * sc, 8),
+    new THREE.MeshStandardMaterial({ color: 0x6a7078, flatShading: true, roughness: 0.55 })
+  );
+  barrel.rotation.x = -Math.PI / 2;
+  barrel.position.z = -22 * sc;
+  g.add(barrel);
+
+  // glowing muzzle ring
+  const muzzle = new THREE.Mesh(
+    new THREE.TorusGeometry(2.0 * sc, 0.6 * sc, 6, 12),
+    new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.8, flatShading: true })
+  );
+  muzzle.position.z = -35 * sc;
+  g.add(muzzle);
+
+  // rear stabiliser fin cluster (4 blades)
+  const finGeo = new THREE.BoxGeometry(0.5 * sc, 10 * sc, 8 * sc);
+  const finMat = new THREE.MeshStandardMaterial({ color: mix(0x8b939c, accent, 0.35), flatShading: true, roughness: 0.7 });
+  for (let i = 0; i < 4; i++) {
+    const fin = new THREE.Mesh(finGeo, finMat);
+    fin.position.z = 15 * sc;
+    fin.rotation.z = i * Math.PI / 2;
+    fin.translateY(6 * sc);
+    g.add(fin);
   }
 
   return g;

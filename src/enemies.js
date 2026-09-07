@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeDart, SHIP_SCALE } from './ships.js';
+import { makeDart, makeSniper, SHIP_SCALE } from './ships.js';
 import { ENEMY_TYPES, goalsForLevel } from './levels.js';
 
 const FWD = new THREE.Vector3(0, 0, -1);
@@ -50,7 +50,7 @@ class Enemy {
     this.haulDir = new THREE.Vector3();
     this.haulStart = new THREE.Vector3();
 
-    this.mesh = makeDart(t.accent, t.bulk);
+    this.mesh = t.shape === 'sniper' ? makeSniper(t.accent, t.bulk) : makeDart(t.accent, t.bulk);
     scene.add(this.mesh);
 
     this._f = new THREE.Vector3(0, 0, -1);

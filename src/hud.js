@@ -17,6 +17,9 @@ export class HUD {
     this.boost = document.getElementById('boost');
     this.axisLabel = document.getElementById('axis-label');
     this.radarLabel = document.getElementById('radar-label');
+    this.hitFlash = document.getElementById('hit-flash');
+    this.hpbar = document.getElementById('hpbar');
+    this.hpbarFill = document.getElementById('hpbar-fill');
     this._flash = 0;
     this._helpT = 0;
   }
@@ -47,7 +50,21 @@ export class HUD {
     this.score.textContent = String(score).padStart(6, '0');
     this.missiles.textContent = player.missiles;
     this.vel.style.height = Math.min(100, 100 * player.speed() / player.maxSpeed) + '%';
-    this.shd.style.height = (100 * player.hull / player.maxHull) + '%';
+
+    // hull: bottom-left S gauge + a top bar that only shows when damaged
+    const hp = player.hull / player.maxHull;
+    this.shd.style.height = (100 * hp) + '%';
+    const damaged = player.alive && hp < 0.999;
+    this.hpbar.style.display = damaged ? 'block' : 'none';
+    if (damaged) {
+      this.hpbarFill.style.width = (100 * Math.max(0, hp)) + '%';
+      this.hpbar.classList.toggle('warn', hp < 0.55 && hp >= 0.28);
+      this.hpbar.classList.toggle('crit', hp < 0.28);
+    }
+
+    // red damage vignette
+    if (this.hitFlash) this.hitFlash.style.opacity = (player.hitPulse * 0.9).toFixed(3);
+
     this.dead.style.display = player.alive ? 'none' : 'block';
     if (!player.alive && this.deadSub) {
       this.deadSub.textContent = `Level ${enemies.level}   Score ${String(score).padStart(6, '0')}`;

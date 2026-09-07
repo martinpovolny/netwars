@@ -15,7 +15,7 @@ export const ENEMY_TYPES = {
     speed: 500 * SPEED_K,
     turn: 24 * TURN_K,
     hp: 2 * SHIELD_K,
-    accent: 0x35e04a,
+    accent: 0x2fe04a,        // green
     bulk: 0.9,
     score: 100,
     fireRange: 900,
@@ -28,7 +28,7 @@ export const ENEMY_TYPES = {
     speed: 620 * SPEED_K,
     turn: 20 * TURN_K,
     hp: 2 * SHIELD_K,
-    accent: 0xf0b000,
+    accent: 0xf5b81a,        // gold (green is the Pirate's)
     bulk: 1.05,
     score: 120,
     fireRange: 700,
@@ -41,7 +41,7 @@ export const ENEMY_TYPES = {
     speed: 700 * SPEED_K,
     turn: 24 * TURN_K,
     hp: 2 * SHIELD_K,
-    accent: 0x2fd0d0,
+    accent: 0x22d4cc,        // cyan
     bulk: 1.0,
     score: 150,
     fireRange: 1100,
@@ -50,11 +50,12 @@ export const ENEMY_TYPES = {
   guardian: {
     name: 'Guardian',
     behavior: 'sniper',      // jump to a distant perch, hold, shoot the player, relocate
+    shape: 'sniper',         // distinct long-barrel silhouette
     target: 'player',
     speed: 1100 * SPEED_K,
     turn: 32 * TURN_K,
     hp: 4 * SHIELD_K,
-    accent: 0x3a6bff,
+    accent: 0x2f7bff,        // bright blue
     bulk: 1.2,
     score: 250,
     fireRange: 1500,
@@ -67,7 +68,7 @@ export const ENEMY_TYPES = {
     speed: 900 * SPEED_K,
     turn: 22 * TURN_K,
     hp: 8 * SHIELD_K,
-    accent: 0xd93bd0,
+    accent: 0x6a5bff,        // blue-violet
     bulk: 1.6,
     score: 500,
     fireRange: 1300,
