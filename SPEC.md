@@ -1,10 +1,15 @@
 # NETWARS — Design Spec
 
 A browser remake of **NetWars** (Novell, 1993): a first-person polygon space
-shooter whose reason to exist was **LAN multiplayer**. This document is the
-reference for what we're building and why. It describes the target; the code may
-lag it. Current values in parentheses come from the phase-1 prototype and are
-tuning knobs, not commitments.
+shooter whose reason to exist was **networked multiplayer**. The original was an
+IPX LAN game; ours is played over the **internet** against a single small
+self-hosted **Go** server. This document is the reference for what we're
+building and why. It describes the target; the code may lag it. Current values
+in parentheses come from the phase-1 prototype and are tuning knobs, not
+commitments.
+
+**Status:** phase-1 single-player client is live at `https://www.hmpf.cz/netwars/`
+(static files on GitHub Pages). Phase-2 is the Go server + client network mode.
 
 ---
 
@@ -13,9 +18,10 @@ tuning knobs, not commitments.
 - Recreate the *feel* of NetWars, then improve on it: floaty inertial flight,
   the deploy-a-marker-and-chase-it steering, the tilted-grid scanner that shows
   the third dimension as vertical stalks, the vector-polygon look.
-- **Multiplayer on a LAN is the point.** Friends on the same network, one host,
-  everyone else joins by URL. Single-player vs AI is the foundation and the
-  practice range; AI ships double as bots to fill multiplayer slots.
+- **Online multiplayer is the point.** One small Go server on a cheap box with
+  a single open port; players open the web client and pick *network mode* to
+  connect. Single-player vs AI is the foundation and the practice range; the
+  same AI runs server-side as bots to fill multiplayer slots.
 - Keep it frictionless: no install for players, no per-OS builds, no accounts.
 
 ## 2. Platform & tech
@@ -23,14 +29,16 @@ tuning knobs, not commitments.
 | Concern | Choice | Why |
 |---|---|---|
 | Client | HTML + ES modules + **Three.js core** from CDN, no build step | Zero install, instant iteration, shareable by link; flat-shaded / wireframe look is native to Three.js |
+| Client hosting | **GitHub Pages** at `www.hmpf.cz/netwars/` (static `index.html` + `src/`) | already live; no build |
 | Rendering | WebGL via Three.js; three viewports (main + orientation inset + scanner inset) | insets are separate scenes composited with scissor/viewport |
-| Server (phase 2) | **Node + `ws`**, serves the static client *and* runs the game server on one port | Host runs `node server.js`, shares `http://<host-ip>:PORT` |
-| Transport | WebSocket (TCP) | LAN latency ~1 ms, negligible loss — UDP/WebRTC solve NAT problems we don't have |
+| Server (phase 2) | **Go**, single static binary, self-hosted on a small box, one open port | tiny footprint, easy deploy (`scp` one file + a systemd unit), goroutine-per-conn scales fine for a handful of arenas |
+| Transport | **WebSocket over TLS (`wss://`)** | the client is served over HTTPS, so a plain `ws://` is blocked as mixed content — TLS is mandatory, not optional |
+| TLS | Let's Encrypt via `golang.org/x/crypto/acme/autocert` on a subdomain (e.g. `netwars.hmpf.cz`), **or** a one-line Caddy reverse proxy in front | keeps it to one open port and no cert plumbing by hand |
 | Audio | WebAudio blip synth, resumed on first gesture | no asset files |
 
-Not chosen: Godot (native builds to distribute), Unity (overkill), raw WebGL
-(slower iteration). Revisit Godot only if we want native desktop clients or
-rollback netcode.
+Not chosen: Node server (Go is the pick), P2P / WebRTC data channels (needs
+signaling + STUN/TURN; a single public server has no NAT problem to solve),
+Godot / Unity, raw WebGL. Revisit WebRTC only if WSS jitter proves unplayable.
 
 ## 3. Core loop
 
@@ -274,65 +282,118 @@ WebAudio only, created/resumed on first click:
 
 Later: throttle hum, lock-on tone, UI blips.
 
-## 14. Multiplayer (phase 2)
+## 14. Multiplayer (phase 2) — internet, Go server
 
 ### Topology
 
-One process on the host: an HTTP server for the static client **and** a
-WebSocket game server on the same port. Players open `http://<host-ip>:PORT`.
-No matchmaking, no discovery service — the host reads their LAN IP off the
-console banner and tells people.
+- **Client** stays on GitHub Pages (`www.hmpf.cz/netwars/`). *Network mode* is
+  triggered entirely by the **URL fragment** (never sent to the Pages host):
 
-### Authority
+  ```
+  https://www.hmpf.cz/netwars/#<session_id>?server_id=<host>
+  ```
 
-**Shooter-authoritative, server-relayed** — simple and fine for friends on a
-LAN:
+  - `session_id` — a human-picked string, e.g. `eneas`. **Everyone who loads
+    the same `session_id` on the same server plays the same match.** It is the
+    room name; no lobby, no list — you share a link.
+  - `server_id` — which Go server to reach. The client opens
+    `wss://<server_id>/ws` and sends `session_id` in `hello`.
+  - No fragment ⇒ the single-player client, unchanged.
 
-- Each client simulates its own ship fully and sends state.
-- The client that fired a shot detects the hit and sends a `hit` claim; the
-  server validates loosely (range/plausibility) and applies damage + score.
-- The server owns: player roster, ship/accent/spawn assignment, authoritative
-  score, pod state, AI/bots, level/mode state.
-- Add client-side prediction + reconciliation later only if the LAN feel needs
-  it (it probably won't).
+- **Game server** is a separate Go binary on a small always-on box, one open
+  port serving `wss://`. It groups connections into **arenas keyed by
+  `session_id`** (created on first join, torn down when empty). It does **not**
+  serve the client — that's Pages' job.
+
+- **`server_id` must be a hostname with valid TLS** (so `wss://` works from the
+  HTTPS client). A bare IP won't do — Let's Encrypt doesn't issue for IPs and
+  the browser blocks mixed content. Point a name at the box (e.g.
+  `netwars.hmpf.cz`) and let the server's `autocert` handle it, or front it
+  with Caddy / Cloudflare.
+
+### Authority — server-authoritative
+
+Public internet means clients can't be trusted, so the **server runs the
+simulation** and is the single source of truth:
+
+- Clients send **inputs** only (`intent` vector, thrust/reverse/brake/roll
+  flags, fire flags), timestamped and sequence-numbered.
+- The server steps the same Newtonian physics + AI as single-player (§5, §9)
+  at a fixed tick, resolves collisions, owns hull / score / pods / level state,
+  and assigns spawns / accents.
+- **Hit detection is server-side with lag compensation**: on a fire input the
+  server rewinds other entities to the shooter's render time
+  (`now − interpDelay − rtt/2`) before testing.
+- Clients run **prediction** for their own ship (apply local input immediately,
+  reconcile against the authoritative snapshot for their `lastSeq`) and
+  **entity interpolation** for everyone else (render ~100–150 ms in the past
+  from a snapshot buffer).
+- Cheap anti-abuse: per-connection input rate limit, sanity clamps on input
+  values, ignore inputs with implausible timestamps.
 
 ### Rates
 
-- Client → server: input/state at 30–60 Hz.
-- Server → clients: world snapshot at 20–30 Hz.
-- Clients render remote ships from an interpolation buffer (~100 ms behind).
+- Client → server: inputs at 30–60 Hz (coalesced; one packet per client tick).
+- Server tick: 60 Hz simulation.
+- Server → clients: delta snapshots at 20–30 Hz, full snapshot on join / resync.
+- `ping`/`pong` every ~1 s for RTT and to keep proxies from idling the socket.
+
+### Shared constants
+
+Physics and tuning values (thrust, `turnFactor`, weapon speeds, enemy stats,
+pod hp, …) must be **identical** on the predicting client and the authoritative
+server. Keep one source: `shared/constants.json`, imported by the JS client and
+embedded (`go:embed`) or code-generated into the Go server. Never hand-copy.
 
 ### Join flow
 
-1. Client connects, sends `hello { name }`.
-2. Server assigns `id`, `accent`, spawn transform; replies `welcome { id, you,
-   players[], mode, level }`.
-3. Server broadcasts `join { player }` to others.
-4. Steady state: client sends `state` / `fire` / `hit`; server broadcasts
-   `snapshot`, plus `kill`, `spawn`, `leave`, `score`, `level` events.
+1. Client parses `location.hash` → `session_id`, `server_id`; opens
+   `wss://<server_id>/ws`; sends `hello { name, session, ver }`.
+2. Server finds-or-creates the arena for `session`, assigns `id`, `accent`,
+   spawn transform; replies
+   `welcome { id, you, tickRate, snapRate, players[], pods[], mode, level }`.
+3. Server broadcasts `join { player }` to that arena.
+4. Steady state: client sends `input`; server broadcasts `snapshot` (+ `event`
+   for discrete things: `kill`, `spawn`, `podlost`, `score`, `level`, `leave`).
+5. On packet loss / big desync the client sends `resync`; server replies with a
+   full snapshot.
 
-### Message sketch (JSON; may switch to binary later)
+### Message sketch (JSON to start; switch to a binary/Float32 packing if the
+snapshot size or GC pressure warrants it)
 
 ```
-C→S  hello  { name }
-C→S  state  { t, pos:[x,y,z], quat:[x,y,z,w], vel:[x,y,z], throttle, hull }
-C→S  fire   { t, origin:[..], dir:[..], seq }
-C→S  hit    { target, seq, dmg }
-S→C  welcome { id, you, players:[{id,name,accent}], mode, level }
-S→C  snapshot{ t, ships:[{id,pos,quat,vel,hull,throttle}], pods:[..], bots:[..] }
-S→C  join   { player } / leave { id }
-S→C  kill   { victim, killer } / spawn { id, pos, quat }
-S→C  score  { id, score } / level { n, goals }
+C→S  hello   { name, session, ver }
+C→S  input   { seq, t, intent:[x,y], thrust:-1|0|1, roll:-1|0|1, brake, boost,
+               fireGun, fireMissile }
+C→S  ping    { t }
+C→S  resync  {}
+S→C  welcome { id, you, tickRate, snapRate, players:[{id,name,accent}],
+               pods:[...], mode, level }
+S→C  snapshot{ t, ackSeq, ships:[{id,pos,quat,vel,hull}], pods:[...],
+               shots:[...] }        // delta vs last ack where possible
+S→C  event   { kind:"kill"|"spawn"|"podlost"|"score"|"level"|"leave", ... }
+S→C  pong    { t, srvT }
 ```
 
 ### Bots
 
-Empty slots are filled with the §9 AI so a 2-player game still feels populated.
-Bots run on the server and appear in snapshots like players.
+The §9 AI is ported to Go and runs on the server. Empty arena slots are filled
+with bots so a 2-player game still feels populated; they appear in snapshots
+exactly like players.
+
+### Deploy
+
+Single static binary. `GOOS=linux GOARCH=amd64 go build -o netwars-server
+./cmd/netwars-server`, `scp` it over, run under a systemd unit with
+`autocert` pointed at `netwars.hmpf.cz` (needs ports 80+443, or 443 only if a
+cert is provisioned another way) — or bind a high port and put Caddy in front.
+Graceful shutdown drains arenas.
 
 ## 15. Non-goals (for now)
 
-- Internet play across NAT (would need WebRTC + a signaling/TURN setup).
+- P2P / WebRTC data channels, STUN/TURN, NAT traversal — a single public
+  server sidesteps all of it.
+- Matchmaking service, accounts, persistence, leaderboards.
 - Native desktop clients.
 - NWDRAW-style in-game ship editor.
 - External / chase camera.
@@ -355,8 +416,16 @@ src/starfield.js       wrapping point stars + reference grid
 src/radar.js           the scanner (own scene + tilted viewport)
 src/orientation.js     the axis tripod (own scene + viewport)
 src/hud.js             DOM HUD updates
-server/server.js       (phase 2) static host + WS game server
-server/bots.js         (phase 2) server-side AI
+src/net.js             (phase 2) network mode: wss client, prediction, interp
+
+shared/constants.json  (phase 2) physics/tuning shared by client + Go server
+
+server/                (phase 2) Go module
+  cmd/netwars-server/main.go   flags, TLS/autocert, listen, graceful shutdown
+  net/                         wss upgrade, per-conn read/write pumps, framing
+  game/                        arena, fixed-tick loop, Newtonian sim, collisions
+  game/ai.go                   §9 enemy behaviours ported from enemies.js
+  game/snapshot.go             delta snapshot build + lag-comp rewind buffer
 ```
 
 ## 17. Tuning knobs
@@ -378,6 +447,10 @@ server/bots.js         (phase 2) server-side AI
 | ram: enemy→player dmg / knockback; enemy→pod dmg | `enemies.js` | 26 / 150 ; 20 |
 | `PODS_PER_LEVEL`, pod `hp` | `levels.js`, `pods.js` | 6 / 24 |
 
+Phase-2 server knobs (proposed): sim tick 60 Hz · snapshot 20–30 Hz · client
+interp delay 100–150 ms · max players/arena 8 · max arenas per process (cap for
+the small box) · input rate limit ~90/s/conn · ping interval 1 s.
+
 ## 18. Open questions
 
 - Does the intent marker auto-center, or is centering fully manual (more
@@ -389,3 +462,16 @@ server/bots.js         (phase 2) server-side AI
 - Level pacing — kills-per-minute target, and how fast quotas scale.
 - Snapshot format: stay JSON or go binary (Float32Array) before it matters?
 - Co-op friendly fire on/off (player→pod is already off).
+
+Phase-2 / networking:
+
+- `server_id` TLS: `autocert` on the box (needs 80+443), Caddy in front, or
+  Cloudflare? Whichever, `server_id` ends up a hostname, not the raw IP.
+- What's the multiplayer *mode* per `session_id` — co-op defend-the-pods,
+  deathmatch, or both selectable? Does the session creator's first choice stick?
+- Full server-authoritative sim from day one, or ship a relay first and harden
+  later? (Public internet argues for authoritative now.)
+- Shared constants: JSON consumed both sides, or generate a `.go` from the JS?
+- Reconnect: if a player drops and reloads the same `#session_id`, do they
+  resume their ship (grace timer) or respawn fresh?
+- Idle arena teardown delay; per-process arena cap for the small box.
