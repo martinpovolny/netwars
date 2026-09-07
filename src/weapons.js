@@ -26,7 +26,8 @@ export class Weapons {
     const boltGeo = new THREE.OctahedronGeometry(1, 0);
     boltGeo.scale(2.2, 2.2, 9);
     this._matP = new THREE.MeshBasicMaterial({ color: 0x9fc4d0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7 });
-    this._matE = new THREE.MeshBasicMaterial({ color: 0xff6a44, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 });
+    // incoming enemy fire: bright, saturated, so it reads coming head-on
+    this._matE = new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 1 });
     const coreGeo = new THREE.OctahedronGeometry(1, 0);
     coreGeo.scale(1.1, 1.1, 4.5);
     const matCore = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7 });
@@ -87,7 +88,7 @@ export class Weapons {
     scene.add(this.trails);
 
     this._cBolt = new THREE.Color(0x7fa8b6);
-    this._cE = new THREE.Color(0xff5a3c);
+    this._cE = new THREE.Color(0xff3a24);
     this._cMsl = new THREE.Color(0xffd23a);
     this._tmp = new THREE.Vector3();
     this._dir = new THREE.Vector3();
@@ -220,15 +221,24 @@ export class Weapons {
         tc[a] = this._cMsl.r; tc[a + 1] = this._cMsl.g; tc[a + 2] = this._cMsl.b;
         tc[a + 3] = this._cMsl.r * 0.1; tc[a + 4] = this._cMsl.g * 0.1; tc[a + 5] = this._cMsl.b * 0.1;
       } else {
+        const isEnemy = this.team[i] === 'enemy';
         bolt.visible = true;
-        bolt.material = this.team[i] === 'player' ? this._matP : this._matE;
+        bolt.material = isEnemy ? this._matE : this._matP;
         bolt.position.copy(this.pos[i]);
         if (speed > 1e-3) bolt.quaternion.setFromUnitVectors(FZ, this._dir);
-        const col = this.team[i] === 'player' ? this._cBolt : this._cE;
+        if (isEnemy) {
+          // always fat, and strobing, so incoming fire is impossible to miss
+          const pulse = 2.6 + 0.9 * Math.sin(this.age[i] * 42);
+          bolt.scale.set(pulse, pulse, 1.7);
+        } else {
+          bolt.scale.set(1, 1, 1);
+        }
+        const col = isEnemy ? this._cE : this._cBolt;
+        const trail = isEnemy ? 0.07 : 0.04;
         tp[a] = this.pos[i].x; tp[a + 1] = this.pos[i].y; tp[a + 2] = this.pos[i].z;
-        tp[a + 3] = this.pos[i].x - this.vel[i].x * 0.04;
-        tp[a + 4] = this.pos[i].y - this.vel[i].y * 0.04;
-        tp[a + 5] = this.pos[i].z - this.vel[i].z * 0.04;
+        tp[a + 3] = this.pos[i].x - this.vel[i].x * trail;
+        tp[a + 4] = this.pos[i].y - this.vel[i].y * trail;
+        tp[a + 5] = this.pos[i].z - this.vel[i].z * trail;
         tc[a] = col.r; tc[a + 1] = col.g; tc[a + 2] = col.b;
         tc[a + 3] = col.r * 0.1; tc[a + 4] = col.g * 0.1; tc[a + 5] = col.b * 0.1;
       }
