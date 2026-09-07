@@ -91,6 +91,26 @@
   }
   #boost.on { opacity: 1; }
 
+  /* missile-in-flight indicator (top-right, under missiles count) */
+  #msl {
+    position: absolute; top: 82px; right: 20px; font-size: 13px;
+    display: none; letter-spacing: 1px;
+  }
+  #msl.guided   { display: block; color: var(--green); }
+  #msl.ballistic{ display: block; color: #ffb020; }
+
+  /* centre lock ring — the missile seeker box */
+  #lock {
+    position: absolute; left: 50%; top: 50%; width: 200px; height: 200px;
+    transform: translate(-50%, -50%);
+  }
+  #lock .ring { fill: none; stroke: #4c8f6a; stroke-width: 2; stroke-dasharray: 5 9; opacity: 0.45; }
+  #lock.locked .ring {
+    stroke: #ff2f2f; stroke-dasharray: none; opacity: 1;
+    animation: lockpulse 0.45s ease-in-out infinite alternate;
+  }
+  @keyframes lockpulse { to { stroke-width: 3.5; } }
+
   /* top-centre objectives readout */
   #obj {
     position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
@@ -148,6 +168,11 @@
     <div class="gauge"><div class="fill" id="shd-fill"></div><span class="lbl">S</span></div>
   </div>
 
+  <!-- missile seeker / lock ring at screen centre -->
+  <svg id="lock" viewBox="-100 -100 200 200">
+    <circle class="ring" cx="0" cy="0" r="64" />
+  </svg>
+
   <!-- heading indicator: a cross with the centre missing (nose direction) -->
   <svg id="heading" viewBox="-120 -120 240 240">
     <g class="cross">
@@ -168,6 +193,7 @@
 
   <div id="mouse"></div>
   <div id="boost">Extra Thrust</div>
+  <div id="msl">Msl ▸ Ballistic</div>
 
   <div id="obj">Level 1</div>
   <div id="pods">Pods 6/6</div>

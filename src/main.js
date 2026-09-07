@@ -96,6 +96,28 @@ const _lookM = new THREE.Matrix4();
 const _lookAt = new THREE.Vector3();
 const _targetQ = new THREE.Quaternion();
 
+// missile lock: nearest enemy whose screen position sits inside the centre ring
+const LOCK_PX = 64;                 // must match #lock ring radius
+const _ndc = new THREE.Vector3();
+function computeLock(W, H) {
+  if (!player.alive) return null;
+  let best = null;
+  let bestDist = Infinity;
+  const cx = W / 2;
+  const cy = H / 2;
+  for (const e of enemies.list) {
+    if (e.dead) continue;
+    _ndc.copy(e.position).project(camera);
+    if (_ndc.z >= 1) continue;                     // behind camera / clipped
+    const sx = (_ndc.x * 0.5 + 0.5) * W;
+    const sy = (-_ndc.y * 0.5 + 0.5) * H;
+    if (Math.hypot(sx - cx, sy - cy) > LOCK_PX) continue;   // outside the ring
+    const d = e.position.distanceToSquared(player.position);
+    if (d < bestDist) { bestDist = d; best = e; }
+  }
+  return best;
+}
+
 let last = performance.now();
 
 function frame(now) {
@@ -185,8 +207,17 @@ function frame(now) {
 
   renderer.setViewport(0, 0, W, H);
 
+  // missile lock is computed from the freshly-updated camera; used by the
+  // NEXT frame's missile launch and drawn this frame by the HUD
+  const lockTarget = computeLock(W, H);
+  player.lockTarget = lockTarget;
+
   hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
-  hud.update(dt, player, enemies, pods, score, radar);
+  hud.update(dt, player, enemies, pods, score, radar, {
+    locked: !!lockTarget,
+    missileActive: weapons.playerMissileActive(),
+    missileGuided: weapons.playerMissileGuided(),
+  });
 }
 
 startLevel(1);

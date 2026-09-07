@@ -112,6 +112,16 @@ export class Weapons {
     return false;
   }
 
+  // true if the active player missile is homing a live target (vs. ballistic)
+  playerMissileGuided() {
+    for (let i = 0; i < MAX; i++) {
+      if (this.ttl[i] > 0 && this.team[i] === 'player' && this.kind[i] === 'missile') {
+        return !!(this.target[i] && !this.target[i].dead);
+      }
+    }
+    return false;
+  }
+
   update(dt, player, enemies, pods, explosions, audio, onKill) {
     const tp = this.tpos;
     const tc = this.tcol;
@@ -135,13 +145,12 @@ export class Weapons {
         // self-propelled: keep building speed along its heading
         const sp = this.vel[i].length();
         if (sp > 1e-3 && sp < 1500) this.vel[i].multiplyScalar(1 + 1.6 * dt);
-        // guidance kicks in only after it has flown straight for a moment
+        // homes only toward the target it was locked to at launch — no
+        // re-acquire. No lock -> flies straight. Brief straight phase first.
         if (this.age[i] > 0.35) {
           const tgt = this.target[i];
-          let aim = tgt && !tgt.dead ? tgt : enemies.nearestInFront(player, 0.2);
-          if (aim && !aim.dead) {
-            this.target[i] = aim;
-            const desired = this._tmp.copy(aim.position).sub(this.pos[i]).normalize().multiplyScalar(this.vel[i].length());
+          if (tgt && !tgt.dead) {
+            const desired = this._tmp.copy(tgt.position).sub(this.pos[i]).normalize().multiplyScalar(this.vel[i].length());
             this.vel[i].lerp(desired, 1 - Math.pow(0.01, dt));
           }
         }

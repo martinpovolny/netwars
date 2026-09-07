@@ -25,6 +25,7 @@ export class Player {
 
     this.missiles = 16;       // guided missiles (the dull cannon is unlimited)
     this.maxMissiles = 16;
+    this.lockTarget = null;   // enemy currently inside the centre lock ring (set by main)
 
     // control state (each component roughly -1..1, fraction of full deflection)
     this.mouse = new THREE.Vector2(0, 0);   // raw cursor (tiny white rect)
@@ -137,7 +138,9 @@ export class Player {
     if (wantMissile && this._mslCd <= 0 && this.missiles > 0 && !weapons.playerMissileActive()) {
       this._mslCd = this.missileInterval;
       this.missiles--;
-      const target = enemies ? enemies.nearestInFront(this, 0.2) : null;
+      // guides only if something is locked in the centre ring at launch;
+      // otherwise it flies ballistic (no re-acquire)
+      const target = this.lockTarget && !this.lockTarget.dead ? this.lockTarget : null;
       // launch from a belly rail: slightly ahead and low
       const p = this.position.clone().addScaledVector(fwd, 6).addScaledVector(up, -4);
       // straight ahead: ship momentum + a constant forward

@@ -20,6 +20,8 @@ export class HUD {
     this.hitFlash = document.getElementById('hit-flash');
     this.hpbar = document.getElementById('hpbar');
     this.hpbarFill = document.getElementById('hpbar-fill');
+    this.lock = document.getElementById('lock');
+    this.msl = document.getElementById('msl');
     this._flash = 0;
     this._helpT = 0;
   }
@@ -46,7 +48,7 @@ export class HUD {
     this.radarLabel.style.bottom = (radar.bottom + radar.h + 6) + 'px';
   }
 
-  update(dt, player, enemies, pods, score, radar) {
+  update(dt, player, enemies, pods, score, radar, lock) {
     this.score.textContent = String(score).padStart(6, '0');
     this.missiles.textContent = player.missiles;
     this.vel.style.height = Math.min(100, 100 * player.speed() / player.maxSpeed) + '%';
@@ -76,6 +78,16 @@ export class HUD {
     this.intent.style.transform = `translate(${player.intent.x * maxX}px, ${player.intent.y * maxY}px)`;
     this.mouse.style.transform = `translate(${player.mouse.x * maxX}px, ${player.mouse.y * maxY}px)`;
     this.boost.classList.toggle('on', player.boosting && player.thrusting !== 0);
+
+    // missile lock ring + in-flight indicator
+    if (this.lock) this.lock.classList.toggle('locked', player.alive && !!(lock && lock.locked));
+    if (this.msl) {
+      this.msl.className = '';
+      if (lock && lock.missileActive) {
+        this.msl.classList.add(lock.missileGuided ? 'guided' : 'ballistic');
+        this.msl.textContent = lock.missileGuided ? 'Msl ▸ Guided' : 'Msl ▸ Ballistic';
+      }
+    }
 
     const parts = [`Level ${enemies.level}`];
     for (const k of Object.keys(enemies.goals)) {
