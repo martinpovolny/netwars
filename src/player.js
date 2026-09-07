@@ -150,6 +150,9 @@ export class Player {
     }
   }
 
+  giveMissiles(n) { this.missiles = Math.min(this.maxMissiles, this.missiles + n); }
+  repair(n) { this.hull = Math.min(this.maxHull, this.hull + n); }
+
   damage(amount, audio) {
     if (!this.alive || this.invuln > 0) return;
     this.hull -= amount;

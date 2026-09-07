@@ -166,8 +166,9 @@ export class Weapons {
           const r = e.radius + (isMissile ? 8 : 0);
           if (this.pos[i].distanceToSquared(e.position) < r * r) {
             e.hp -= dmg;
-            explosions.spark(this.pos[i]);
-            if (e.hp <= 0) { e.dead = true; explosions.blast(e.position, 0xffcc55); audio?.boom(); }
+            e.flash = 1;                                  // brief bright hull flash
+            explosions.hit(this.pos[i], isMissile ? 0xffd23a : 0xbfe8ff);
+            if (e.hp <= 0) { e.dead = true; explosions.blast(e.position, e.stats.accent || 0xffcc55); audio?.boom(); }
             else if (isMissile) explosions.blast(this.pos[i], 0xffd23a);
             hit = true;
             break;

@@ -53,6 +53,11 @@ class Enemy {
     this.mesh = t.shape === 'sniper' ? makeSniper(t.accent, t.bulk) : makeDart(t.accent, t.bulk);
     scene.add(this.mesh);
 
+    // hull material + hit-flash: enemy glows white briefly when shot
+    this.flash = 0;
+    this._hullMat = this.mesh.children.find((c) => c.material && c.material.emissive)?.material || null;
+    this._hullBase = this._hullMat ? this._hullMat.emissive.clone() : null;
+
     this._f = new THREE.Vector3(0, 0, -1);
     this._d = new THREE.Vector3();
     this._q = new THREE.Quaternion();
@@ -251,6 +256,11 @@ class Enemy {
       case 'charger': this._charger(dt, player, weapons, audio); break;
       case 'thief': this._thief(dt, player, pods, weapons, audio); break;
       default: this._brawler(dt, player, weapons, audio);
+    }
+
+    if (this.flash > 0) {
+      this.flash = Math.max(0, this.flash - dt * 6);
+      if (this._hullMat) this._hullMat.emissive.setScalar(this.flash * 0.9);
     }
 
     this.mesh.position.copy(this.position);

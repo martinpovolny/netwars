@@ -5,6 +5,7 @@ import { Player } from './player.js';
 import { Weapons } from './weapons.js';
 import { Enemies } from './enemies.js';
 import { Pods } from './pods.js';
+import { Bonuses } from './bonuses.js';
 import { Explosions } from './explosions.js';
 import { Starfield } from './starfield.js';
 import { Radar } from './radar.js';
@@ -38,6 +39,7 @@ const weapons = new Weapons(scene);
 const explosions = new Explosions(scene);
 const enemies = new Enemies(scene);
 const pods = new Pods(scene);
+const bonuses = new Bonuses(scene);
 const starfield = new Starfield(scene);
 const radar = new Radar();
 const orient = new OrientationInset();
@@ -50,7 +52,7 @@ let deadAt = 0;          // performance.now() when the player was destroyed
 
 enemies.onKill = (e) => { score += e.stats.score; };
 
-window.__nw = { scene, camera, player, enemies, pods, weapons, explosions, radar, input, audio, hud, paused: false, get score() { return score; }, get state() { return state; } };
+window.__nw = { scene, camera, player, enemies, pods, bonuses, weapons, explosions, radar, input, audio, hud, paused: false, get score() { return score; }, get state() { return state; } };
 
 canvas.addEventListener('mousedown', () => { audio.resume(); hud.hideHelp(); }, { once: true });
 
@@ -69,6 +71,7 @@ window.addEventListener('keydown', (e) => {
 function startLevel(n) {
   enemies.startLevel(n);
   pods.spawnLevel(PODS_PER_LEVEL, player.position);
+  bonuses.reset();
   player.reset();
   state = 'playing';
   hud.flash('LEVEL ' + n, 2.2);
@@ -135,6 +138,13 @@ function frame(now) {
   player.update(dt, input, weapons, enemies, audio);
   enemies.update(simDt, player, pods, weapons, audio);
   pods.update(simDt);
+  const got = bonuses.update(simDt, player, pods.alive ? pods.centroid : player.position);
+  if (got) {
+    if (got.kind === 'missiles') { player.giveMissiles(6); hud.flash('+6 MISSILES', 1.4); }
+    else { player.repair(35); hud.flash('+35 HULL', 1.4); }
+    explosions.hit(player.position, got.kind === 'repair' ? 0x2fe06a : 0x3ad0ff);
+    audio.pickup();
+  }
   if (simDt > 0) {
     if (enemies.checkRam(player, explosions, audio)) hud.flash('COLLISION', 1.2);
     enemies.checkPodStrikes(pods, explosions, audio);
@@ -142,7 +152,7 @@ function frame(now) {
   weapons.update(simDt, player, enemies, pods, explosions, audio, onWeaponEvent);
   explosions.update(simDt);
   starfield.update(player);
-  radar.update(player, enemies, pods);
+  radar.update(player, enemies, pods, bonuses);
   orient.update(player);
 
   // player just died -> mark the moment, hold the spectator camera here

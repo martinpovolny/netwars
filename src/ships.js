@@ -96,45 +96,105 @@ export function makeDart(accent = 0xff4040, bulk = 1) {
 export function makeSniper(accent = 0x3a6bff, bulk = 1.2) {
   const g = new THREE.Group();
   const sc = bulk * SHIP_SCALE;
+  const hullMat = new THREE.MeshStandardMaterial({ color: mix(0xb9c0c9, accent, 0.5), flatShading: true, roughness: 0.6, side: THREE.DoubleSide });
 
+  // slender fuselage
   const bodyGeo = new THREE.CylinderGeometry(2.4 * sc, 1.0 * sc, 30 * sc, 6);
-  bodyGeo.rotateX(-Math.PI / 2);           // long axis -> Z, taper toward nose
-  const hull = new THREE.Mesh(
-    bodyGeo,
-    new THREE.MeshStandardMaterial({ color: mix(0xb9c0c9, accent, 0.5), flatShading: true, roughness: 0.6, side: THREE.DoubleSide })
-  );
+  bodyGeo.rotateX(-Math.PI / 2);
+  const hull = new THREE.Mesh(bodyGeo, hullMat);
   hull.position.z = 2 * sc;
   g.add(hull);
   const hullEdges = new THREE.LineSegments(new THREE.EdgesGeometry(bodyGeo, 20), new THREE.LineBasicMaterial({ color: bright(accent, 0.6) }));
   hullEdges.position.z = 2 * sc;
   g.add(hullEdges);
 
-  // forward gun barrel, well past the nose
+  // chunky central hub — gives the ship mass head-on and tail-on
+  const hubGeo = new THREE.IcosahedronGeometry(6.5 * sc, 0);
+  hubGeo.scale(1.35, 1.0, 0.8);
+  const hub = new THREE.Mesh(hubGeo, hullMat);
+  hub.position.z = 3 * sc;
+  g.add(hub);
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(hubGeo, 8), new THREE.LineBasicMaterial({ color: bright(accent, 0.55) })));
+  g.children[g.children.length - 1].position.z = 3 * sc;
+
+  // forward gun barrel + glowing muzzle ring
   const barrel = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.5 * sc, 1.9 * sc, 26 * sc, 8),
+    new THREE.CylinderGeometry(1.6 * sc, 2.1 * sc, 26 * sc, 8),
     new THREE.MeshStandardMaterial({ color: 0x6a7078, flatShading: true, roughness: 0.55 })
   );
   barrel.rotation.x = -Math.PI / 2;
   barrel.position.z = -22 * sc;
   g.add(barrel);
-
-  // glowing muzzle ring
   const muzzle = new THREE.Mesh(
-    new THREE.TorusGeometry(2.0 * sc, 0.6 * sc, 6, 12),
-    new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.8, flatShading: true })
+    new THREE.TorusGeometry(2.4 * sc, 0.8 * sc, 6, 14),
+    new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.9, flatShading: true })
   );
   muzzle.position.z = -35 * sc;
   g.add(muzzle);
 
-  // rear stabiliser fin cluster (4 blades)
-  const finGeo = new THREE.BoxGeometry(0.5 * sc, 10 * sc, 8 * sc);
-  const finMat = new THREE.MeshStandardMaterial({ color: mix(0x8b939c, accent, 0.35), flatShading: true, roughness: 0.7 });
+  // rear engine block + glow disc
+  const eng = new THREE.Mesh(new THREE.CylinderGeometry(4.5 * sc, 3.4 * sc, 7 * sc, 6), hullMat);
+  eng.rotation.x = -Math.PI / 2;
+  eng.position.z = 18 * sc;
+  g.add(eng);
+  const glow = new THREE.Mesh(
+    new THREE.CircleGeometry(3.4 * sc, 12),
+    new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+  );
+  glow.position.z = 21.6 * sc;
+  g.add(glow);
+
+  // bigger rear stabiliser fin cluster (4 blades)
+  const finGeo = new THREE.BoxGeometry(0.6 * sc, 14 * sc, 10 * sc);
+  const finMat = new THREE.MeshStandardMaterial({ color: mix(0x8b939c, accent, 0.4), flatShading: true, roughness: 0.7 });
   for (let i = 0; i < 4; i++) {
     const fin = new THREE.Mesh(finGeo, finMat);
-    fin.position.z = 15 * sc;
+    fin.position.z = 14 * sc;
     fin.rotation.z = i * Math.PI / 2;
-    fin.translateY(6 * sc);
+    fin.translateY(8 * sc);
     g.add(fin);
+  }
+
+  return g;
+}
+
+// Collectible bonus pod. kind: 'missiles' (cyan) | 'repair' (green).
+// A slowly spinning octahedron with a bright inner core and an orbit ring.
+export function makeBonus(kind) {
+  const col = kind === 'repair' ? 0x2fe06a : 0x3ad0ff;
+  const g = new THREE.Group();
+
+  const shell = new THREE.Mesh(
+    new THREE.OctahedronGeometry(11, 0),
+    new THREE.MeshStandardMaterial({ color: col, flatShading: true, emissive: col, emissiveIntensity: 0.35, transparent: true, opacity: 0.55, roughness: 0.4 })
+  );
+  g.add(shell);
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(shell.geometry), new THREE.LineBasicMaterial({ color: bright(col, 0.5) })));
+
+  const core = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(4.5, 0),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })
+  );
+  g.add(core);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(15, 0.7, 6, 20),
+    new THREE.MeshBasicMaterial({ color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.9 })
+  );
+  ring.rotation.x = Math.PI / 2.3;
+  g.add(ring);
+  g.userData.ring = ring;
+
+  // a tiny glyph so the two kinds read differently up close
+  const glyphMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  if (kind === 'repair') {
+    const v = new THREE.Mesh(new THREE.BoxGeometry(2, 8, 2), glyphMat);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 2), glyphMat);
+    g.add(v, h);
+  } else {
+    const rocket = new THREE.Mesh(new THREE.ConeGeometry(2, 9, 6), glyphMat);
+    rocket.rotation.x = -Math.PI / 2;
+    g.add(rocket);
   }
 
   return g;
