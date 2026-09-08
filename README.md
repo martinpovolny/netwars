@@ -118,7 +118,8 @@ client/
   ships.js                 hand-built low-poly dart / pod / bonus meshes
   levels.js                re-exports ENEMY_TYPES / goalsForLevel / PODS_PER_LEVEL
   explosions.js            expanding wire shells + spark sprays (client-only FX)
-  render/environment.js    3-layer background: fixed stars, speed motes, faded grid
+  render/environment.js    3-layer background: real HYG star sky, speed motes, faded grid
+  render/stars.json        reduced HYG catalogue (mag ≤ 6.5); built by tools/build-stars.mjs
   radar.js                 the scanner (own scene, tilted viewport, zoom levels)
   orientation.js           the axis tripod (own scene + viewport)
   hud.js                   DOM HUD updates

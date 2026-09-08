@@ -1,28 +1,35 @@
 import * as THREE from 'three';
 import { K } from '../../shared/constants.js';
+import STARS from './stars.json' with { type: 'json' };
 
 const E = K.env;
 const hex = (s) => parseInt(s.slice(1), 16);
 
-// A soft radial-gradient sprite texture, built once and shared by the nebula
-// blobs (tinted per-blob through the material colour).
-function nebulaTexture() {
-  const s = 128;
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = s;
-  const ctx = cv.getContext('2d');
-  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-  g.addColorStop(0.0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.4, 'rgba(255,255,255,0.35)');
-  g.addColorStop(1.0, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, s, s);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.needsUpdate = true;
-  return tex;
+// B-V colour index -> approximate RGB. A few stops, lerped; enough to tell a
+// hot blue star from a cool orange one without a full black-body fit.
+const BV_STOPS = [
+  [-0.4, [0.70, 0.80, 1.00]],
+  [ 0.0, [0.82, 0.88, 1.00]],
+  [ 0.6, [1.00, 0.97, 0.92]],
+  [ 1.0, [1.00, 0.88, 0.74]],
+  [ 1.6, [1.00, 0.78, 0.60]],
+  [ 2.2, [1.00, 0.70, 0.52]],
+];
+function bvColor(bv, out) {
+  let a = BV_STOPS[0], b = BV_STOPS[BV_STOPS.length - 1];
+  for (let i = 0; i < BV_STOPS.length - 1; i++) {
+    if (bv >= BV_STOPS[i][0] && bv <= BV_STOPS[i + 1][0]) {
+      a = BV_STOPS[i]; b = BV_STOPS[i + 1]; break;
+    }
+  }
+  const t = b[0] === a[0] ? 0 : (bv - a[0]) / (b[0] - a[0]);
+  out[0] = a[1][0] + (b[1][0] - a[1][0]) * t;
+  out[1] = a[1][1] + (b[1][1] - a[1][1]) * t;
+  out[2] = a[1][2] + (b[1][2] - a[1][2]) * t;
+  return out;
 }
 
-function sphereShell(count, radius) {
+function scatterShell(count, radius) {
   const arr = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     // even-ish direction on the unit sphere, then a thin radial jitter
@@ -39,50 +46,25 @@ function sphereShell(count, radius) {
 
 // --- 3-layer flight environment -------------------------------------------
 //
-//  1. star sphere  — tracks the camera POSITION every frame and nothing else,
-//     so stars sweep past when you turn but never translate when you fly.
-//     Unfogged; far enough to sit behind everything.
-//  2. near-field motes — a small cloud that wraps around the ship and is
-//     drawn as short streaks scaled by your velocity (a speed cue, never a
-//     hyperspace tunnel).
+//  1. star sphere  — the real HYG catalogue (naked-eye sky, mag <= 6.5) placed
+//     by RA/Dec, sized and coloured per star. Tracks the camera POSITION every
+//     frame and nothing else, so constellations sweep past when you turn but
+//     never translate when you fly. Unfogged; sits behind everything.
+//  2. near-field motes — a small cloud that wraps around the ship, drawn as
+//     short faint streaks scaled by your velocity (a speed cue, never a
+//     hyperspace tunnel; invisible at rest).
 //  3. reference grid — the y=0 plane, its opacity fading to nothing as you
 //     pick up speed.
 export class Environment {
   constructor(scene) {
-    // ---- layer 1: fixed stars + nebulae -------------------------------
+    // ---- layer 1: real star catalogue -----------------------------
     this.sky = new THREE.Group();
     this.sky.renderOrder = -10;
     scene.add(this.sky);
-
-    const mkStars = (n, size, color) => {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(sphereShell(n, E.starRadius), 3));
-      const pts = new THREE.Points(g, new THREE.PointsMaterial({
-        color, size, sizeAttenuation: false, fog: false,
-        transparent: true, depthWrite: false,
-      }));
-      pts.frustumCulled = false;
-      this.sky.add(pts);
-      return pts;
-    };
-    mkStars(E.starCountDim, E.starSizeDim, hex(E.starColorDim));
-    mkStars(E.starCountBright, E.starSizeBright, hex(E.starColorBright));
-
-    const nebTex = nebulaTexture();
-    for (const nb of E.nebula) {
-      const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: nebTex, color: hex(nb.color), opacity: E.nebulaOpacity,
-        blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-        transparent: true,
-      }));
-      const d = new THREE.Vector3(...nb.dir).normalize().multiplyScalar(E.starRadius * 0.9);
-      spr.position.copy(d);
-      spr.scale.setScalar(nb.size);
-      this.sky.add(spr);
-    }
+    this._buildStars();
 
     // ---- layer 2: near-field motes (drawn as velocity streaks) -------
-    this._base = sphereShell(E.moteCount, E.moteField * 0.5);
+    this._base = scatterShell(E.moteCount, E.moteField * 0.5);
     // scatter through the volume rather than only on a shell
     for (let i = 0; i < this._base.length; i++) this._base[i] *= Math.random();
 
@@ -98,7 +80,7 @@ export class Environment {
     mg.setAttribute('position', new THREE.BufferAttribute(verts, 3));
     mg.setAttribute('color', new THREE.BufferAttribute(cols, 3));
     this.motes = new THREE.LineSegments(mg, new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 0.7,
+      vertexColors: true, transparent: true, opacity: E.moteOpacity,
       blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
     }));
     this.motes.frustumCulled = false;
@@ -115,6 +97,52 @@ export class Environment {
     this._v = new THREE.Vector3();
   }
 
+  // Split the catalogue into a few magnitude buckets so bright stars render
+  // bigger (constellations stay legible) without a per-point-size shader.
+  _buildStars() {
+    const n = STARS.n;
+    const R = E.starRadius;
+    const splits = E.starBucketMag;    // e.g. [3.0, 5.0]
+    const sizes = E.starBucketSize;    // one per bucket, bright -> faint
+    const faintDim = E.starFaintDim;
+
+    const buckets = sizes.map(() => ({ pos: [], col: [] }));
+    const rgb = [0, 0, 0];
+    for (let i = 0; i < n; i++) {
+      const ra = STARS.ra[i] * Math.PI / 12;      // hours -> rad
+      const dec = STARS.dec[i] * Math.PI / 180;   // deg   -> rad
+      const cd = Math.cos(dec);
+      const x = cd * Math.cos(ra) * R;
+      const y = Math.sin(dec) * R;
+      const z = cd * Math.sin(ra) * R;
+
+      const mag = STARS.mag[i];
+      let bi = buckets.length - 1;
+      for (let s = 0; s < splits.length; s++) {
+        if (mag <= splits[s]) { bi = s; break; }
+      }
+      bvColor(STARS.ci[i], rgb);
+      // fade the faintest bucket a touch so a dense sky doesn't wash grey
+      const k = bi === buckets.length - 1 ? faintDim : 1;
+      const b = buckets[bi];
+      b.pos.push(x, y, z);
+      b.col.push(rgb[0] * k, rgb[1] * k, rgb[2] * k);
+    }
+
+    this.starLayers = buckets.map((b, bi) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(b.pos), 3));
+      g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(b.col), 3));
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({
+        size: sizes[bi], sizeAttenuation: false, vertexColors: true,
+        fog: false, transparent: true, depthWrite: false,
+      }));
+      pts.frustumCulled = false;
+      this.sky.add(pts);
+      return pts;
+    });
+  }
+
   // camera: the viewpoint (drives stars + mote wrap). player: supplies the
   // velocity that stretches the mote streaks and fades the grid.
   update(player, camera) {
@@ -124,7 +152,9 @@ export class Environment {
     this.sky.position.copy(eye);
 
     // 2. motes: wrap into an axis-aligned box around the eye, then draw
-    //    each as head -> head - vel*k
+    //    each as head -> head - vel*k. No floor on the length: when you're
+    //    nearly still the segments collapse to nothing and the dust vanishes
+    //    (it's purely a speed cue).
     const field = E.moteField;
     const halfF = field * 0.5;
     const b = this._base;
@@ -132,10 +162,6 @@ export class Environment {
 
     const s = this._v.copy(player.velocity).multiplyScalar(-E.moteStreakScale);
     if (s.lengthSq() > E.moteStreakMax * E.moteStreakMax) s.setLength(E.moteStreakMax);
-    if (s.lengthSq() < E.moteMinLen * E.moteMinLen) {
-      // keep a faint shimmer of dust when nearly still
-      s.set(0, E.moteMinLen, 0);
-    }
 
     for (let i = 0; i < E.moteCount; i++) {
       let x = b[i * 3]     + eye.x;

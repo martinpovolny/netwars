@@ -90,8 +90,9 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
       (1) fixed star sphere — 3000 dim + 700 bright non-attenuated points on a
       20k shell, 3 additive nebula sprites; group `.position.copy(camera)` each
       frame, nothing else; all `fog:false`. (2) 400 motes in an 800u box around
-      the eye, wrapped, drawn as `LineSegments` streaks `head → head − vel·k`
-      (capped at 160u; a 2u y-shimmer at rest). (3) `GridHelper` opacity
+      the eye, wrapped, drawn as faint (`opacity 0.35`) `LineSegments` streaks
+      `head → head − vel·k` (capped at 60u; collapse to nothing at rest).
+      (3) `GridHelper` opacity
       `gridOpacityMax · max(0, 1 − speed/gridFadeSpeed)`, hidden past the fade.
       All params in `shared/constants.json` `env`. sp.js calls
       `environment.update(player, camera)` *after* the camera is placed.
@@ -134,13 +135,21 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
 
 ## Backlog (unscheduled)
 
-- **Meteorites** — slowly tumbling low-poly rocks. Decorative vs. solid
-  (cover/hazard). If solid → `shared/sim/world.js` bodies +
-  `client/render/ships.js#makeRock`; MP seeds the field from `session_id`.
-- **Real star background** — swap procedural points for actual Earth-view
-  constellations from a star catalog (HYG / Yale Bright Star Catalog):
-  RA/Dec + magnitude → points on the sphere, brightness by magnitude; reduced
-  dataset as `client/render/stars.json`.
+- **Meteorites** — *in progress* (branch stacked after the star catalogue):
+  solid tumbling rocks. `shared/sim/rocks.js` (seeded field, drift + tumble +
+  wrap, collide vs player / enemies / projectiles) + `client/render/meteorites.js`;
+  MP seeds the field from `session_id`. `rocks` block in `constants.json`.
+- **Real star background** — *done* (`star-catalog` branch): HYG v41 reduced by
+  `tools/build-stars.mjs` to `client/render/stars.json` (mag ≤ 6.5, ~8.9k stars),
+  placed by RA/Dec, sized per magnitude bucket, tinted by B-V.
+- **Nebulae / Milky Way** — the 3 procedural nebula blobs were dropped with the
+  star-catalogue rewrite. Options to bring atmosphere back: (a) re-add a few dim
+  additive blobs; (b) a faint procedural dust band along the real galactic
+  plane (l/b → sphere, noise-modulated).
+- **Constellation lines + labels** — for a dozen or so famous constellations,
+  draw the figure lines between their catalogue stars (HYG has `bf`/`bayer`
+  designations to match against a small hand-built line list) and float a name
+  label. Toggleable; off by default. Data as `client/render/constellations.json`.
 
 ---
 
