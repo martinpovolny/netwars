@@ -265,10 +265,12 @@ drifting; freeing it (killing the Raider) clears `captor`.
   Hull grey/white, per-player/-class accent stripe and canopy.
 - Black space (`#02040a`), exponential fog, and a **3-layer environment**
   (`client/render/environment.js`, tuned from `constants.json` `env`):
-  1. **Fixed star sphere** — ~3700 non-attenuated points on a large shell plus
-     three dim additive nebula blobs. Tracks the camera *position* every frame
-     and nothing else, so stars sweep past when you turn but never translate
-     when you fly. Unfogged.
+  1. **Fixed star sphere** — the real HYG catalogue reduced to the naked-eye
+     sky (`client/render/stars.json`, mag ≤ 6.5, ~8.9k stars, built by
+     `tools/build-stars.mjs`). Each star placed by RA/Dec, sized by a magnitude
+     bucket so bright stars pop, tinted from its B-V colour index. Tracks the
+     camera *position* every frame and nothing else, so constellations sweep
+     past when you turn but never translate when you fly. Unfogged.
   2. **Near-field motes** — ~400 dust points wrapped in an ~800u box around the
      eye, drawn as short streaks scaled by your velocity (a speed cue, capped
      so it never becomes a hyperspace tunnel).
@@ -433,7 +435,8 @@ client/                rendering + UI over the shared sim
   ships.js             hand-built low-poly dart + pod + bonus meshes
   levels.js            re-exports ENEMY_TYPES / goalsForLevel / PODS_PER_LEVEL
   explosions.js        wire shells + spark sprays (client-only FX)
-  render/environment.js  3-layer background: fixed star sphere, speed motes, faded grid
+  render/environment.js  3-layer background: real HYG star sky, speed motes, faded grid
+  render/stars.json      reduced HYG catalogue (mag <= 6.5), built by tools/build-stars.mjs
   radar.js             the scanner (own scene + tilted viewport)
   orientation.js       the axis tripod (own scene + viewport)
   hud.js               DOM HUD updates
