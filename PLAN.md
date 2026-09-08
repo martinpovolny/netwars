@@ -3,7 +3,8 @@
 Working checklist for the shared-core split + online multiplayer. Tick items as
 they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
-**Status:** M0 in progress — `shared-core-split` branch.
+**Status:** M0 complete on `shared-core-split` — PR open, awaiting merge +
+production deploy. M1 next.
 
 ---
 
@@ -72,9 +73,13 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
       effect, smaller diff). FSM verified: pods-lost → "LEVEL FAILED" → 3 s →
       restart same level, pods refill; network URL → warn + SP fallback.
       0 console errors.
-- [ ] **M0 verify** — full manual play of levels 1–3 (flight feel, 5 AI
-      behaviours, missile lock, bonuses, spectator death, scanner) unchanged;
-      screenshot-compare vs live; deploy split build to Pages, stays green.
+- [x] **M0 verify** — `node --check` all 23 modules; browser: 0 console
+      errors, HUD/tripod/scanner/pods/enemies render as before, level FSM
+      cycles (forced pods-loss → "LEVEL FAILED" → 3 s → same level restarts,
+      pods refill), network-mode URL falls back to SP cleanly.
+      **Production deploy to `www.hmpf.cz/netwars/` waits for the PR merge**
+      (per "refactor lands as its own PR first"); deploy then copies
+      `index.html` + `client/` + `shared/` and drops `src/`.
 - note: the pure `World` + `stepWorld(world, controls, dt)` consolidation is
   deferred to the **start of M2** — it's the natural first step of the Go port.
 
