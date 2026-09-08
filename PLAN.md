@@ -35,9 +35,13 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
       struct from `Input` and delegates the movement block; intent-marker
       easing + fire logic stay in `player.js`. Parity-verified vs. the old
       math: 400-step varied control script, pos/vel/quat deltas exactly 0.
-- [ ] **M0.3** `shared/sim/ai.js` — `stepEnemy(e, world, dt, K)` covering
-      brawler / strafer / sniper / charger / thief + the leash. `enemies.js`
-      keeps spawning/quota bookkeeping, delegates the per-enemy step.
+- [x] **M0.3** `shared/sim/ai.js` — `stepEnemy(e, ctx, dt)` covering
+      brawler / strafer / sniper / charger / thief + `fly`/`tryFire` helpers.
+      `enemies.js` `Enemy` = state + mesh + hull-flash, delegates the step;
+      `Enemies` keeps spawn/quota/leash/ram/pod-strikes (now K.enemy). AI
+      tactical literals stay in ai.js (ported with the Go twin, golden-vector
+      test guards them). Parity-verified vs. the old code for all 5 behaviours
+      over 200 seeded steps: pos/vel deltas 0, quat ~1e-8 (angleTo rounding).
 - [ ] **M0.4** `shared/sim/weapons.js` — projectile motion, missile self-propel
       + guidance, collision math (returns hit events; no THREE meshes / FX).
 - [ ] **M0.5** `shared/sim/rules.js` + `shared/sim/world.js` — the `World`
