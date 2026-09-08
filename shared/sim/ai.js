@@ -12,6 +12,25 @@ const _f = new Vector3(0, 0, -1);
 const _d = new Vector3();
 const _q = new Quaternion();
 const _side = new Vector3();
+const _lead = new Vector3();
+
+// enemy bolt muzzle speed (world units/s) — used for both the shot and the
+// intercept solve so the lead is consistent
+const ENEMY_BOLT_SPEED = 950;
+
+// Where to aim so a bolt of speed ENEMY_BOLT_SPEED meets a target at `tpos`
+// moving at `tvel`. Two fixed-point iterations from the straight-line time
+// estimate — plenty at combat ranges, and branch-light for the Go port.
+// Writes the predicted world position into `out` and returns it.
+function leadPoint(from, tpos, tvel, out) {
+  out.copy(tpos).sub(from);
+  let t = out.length() / ENEMY_BOLT_SPEED;
+  for (let i = 0; i < 2; i++) {
+    out.copy(tvel).multiplyScalar(t).add(tpos).sub(from);
+    t = out.length() / ENEMY_BOLT_SPEED;
+  }
+  return out.copy(tvel).multiplyScalar(t).add(tpos);
+}
 
 function nearestPod(pos, pods) {
   let best = null;
@@ -45,18 +64,25 @@ function fly(e, dt, aimDir, { turn = e.stats.turn, throttle = 1, brake = 0, brak
   e.position.addScaledVector(e.velocity, dt);
 }
 
-function tryFire(e, dt, targetPos, ctx, aimDot = 0.985) {
+// `targetVel` optional: when given, the bolt (and the firing-cone gate) aim at
+// the intercept point rather than straight at `targetPos`, so a shooter can
+// actually hit a target that is crossing its line of sight. The range check
+// still uses the real target distance.
+function tryFire(e, dt, targetPos, ctx, aimDot = 0.985, targetVel = null) {
   e.fireCd -= dt;
   if (e.fireCd > 0) return;
-  const to = _d.copy(targetPos).sub(e.position);
-  const dist = to.length();
-  to.multiplyScalar(1 / Math.max(dist, 1e-3));
-  if (dist > e.stats.fireRange) return;
-  if (aimDot > -1 && _f.dot(to) < aimDot) return;
+  _d.copy(targetPos).sub(e.position);
+  if (_d.length() > e.stats.fireRange) return;
+
+  const aimAt = targetVel ? leadPoint(e.position, targetPos, targetVel, _lead) : targetPos;
+  _d.copy(aimAt).sub(e.position);
+  _d.multiplyScalar(1 / Math.max(_d.length(), 1e-3));
+  if (aimDot > -1 && _f.dot(_d) < aimDot) return;
+
   const g = e.stats.fireGap;
   e.fireCd = g[0] + Math.random() * (g[1] - g[0]);
-  const v = to.clone().multiplyScalar(950).addScaledVector(e.velocity, 0.4);
-  ctx.weapons.spawn(e.position.clone().addScaledVector(to, e.radius + 4), v, 'enemy', 3.2);
+  const v = _d.clone().multiplyScalar(ENEMY_BOLT_SPEED).addScaledVector(e.velocity, 0.4);
+  ctx.weapons.spawn(e.position.clone().addScaledVector(_d, e.radius + 4), v, 'enemy', 3.2);
   ctx.fx?.enemyLaser?.();
 }
 
@@ -81,7 +107,7 @@ function brawler(e, dt, ctx) {
     brake = 0.4;
   }
   fly(e, dt, dir, { throttle: dist > 340 ? 1 : 0.7, brake });
-  tryFire(e, dt, tgt, ctx);
+  tryFire(e, dt, tgt, ctx, 0.985, tgt === player.position ? player.velocity : null);
 }
 
 function strafer(e, dt, ctx) {
@@ -138,9 +164,11 @@ function sniper(e, dt, ctx) {
       e.holdFor = 3.5 + Math.random() * 2.5;
     }
   } else {
-    const d = _d.copy(player.position).sub(e.position).normalize();
-    fly(e, dt, d, { throttle: 0, brakeAll: 1.2, turn: e.stats.turn * 1.5 });
-    tryFire(e, dt, player.position, ctx, 0.95);
+    // hold the perch and track the intercept, not the player's current spot
+    const aim = leadPoint(e.position, player.position, player.velocity, _lead);
+    const d = _d.copy(aim).sub(e.position).normalize();
+    fly(e, dt, d, { throttle: 0, brakeAll: 1.2, turn: e.stats.turn * 1.6 });
+    tryFire(e, dt, player.position, ctx, 0.985, player.velocity);
     e.stateT += dt;
     if (e.stateT > e.holdFor || toPlayer < 480) { e.state = 'relocate'; pickPerch(e, player); }
   }
@@ -148,9 +176,14 @@ function sniper(e, dt, ctx) {
 
 function charger(e, dt, ctx) {
   const { player } = ctx;
-  const to = _d.copy(player.position).sub(e.position).normalize();
-  fly(e, dt, to, { throttle: 1, drag: 0.06, vmax: e.vmax * 1.1 });
-  tryFire(e, dt, player.position, ctx, 0.9);
+  // curve the charge toward the intercept so the nose (and the shot) lead a
+  // crossing player instead of always trailing them
+  const aim = leadPoint(e.position, player.position, player.velocity, _lead);
+  const to = _d.copy(aim).sub(e.position).normalize();
+  fly(e, dt, to, { throttle: 1, drag: 0.06, vmax: e.vmax * 1.1, turn: e.stats.turn * 1.3 });
+  // keep the cone fairly wide — a charging ship can't hold a tight bead; the
+  // intercept lead is what makes the loose spray actually connect
+  tryFire(e, dt, player.position, ctx, 0.94, player.velocity);
 }
 
 function thief(e, dt, ctx) {
@@ -167,7 +200,7 @@ function thief(e, dt, ctx) {
   if (e.state !== 'haul') {
     const closing = dist < 240;
     fly(e, dt, to.clone(), { throttle: closing ? 0.15 : 1, brakeAll: closing ? 0.8 : 0 });
-    tryFire(e, dt, player.position, ctx, 0.99);
+    tryFire(e, dt, player.position, ctx, 0.99, player.alive ? player.velocity : null);
     if (dist < e.radius + e._loot.radius + 10 && e.velocity.length() < 80) {
       e.state = 'haul';
       e._loot.captor = e;
