@@ -90,8 +90,9 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
       (1) fixed star sphere — 3000 dim + 700 bright non-attenuated points on a
       20k shell, 3 additive nebula sprites; group `.position.copy(camera)` each
       frame, nothing else; all `fog:false`. (2) 400 motes in an 800u box around
-      the eye, wrapped, drawn as `LineSegments` streaks `head → head − vel·k`
-      (capped at 160u; a 2u y-shimmer at rest). (3) `GridHelper` opacity
+      the eye, wrapped, drawn as faint (`opacity 0.35`) `LineSegments` streaks
+      `head → head − vel·k` (capped at 60u; collapse to nothing at rest).
+      (3) `GridHelper` opacity
       `gridOpacityMax · max(0, 1 − speed/gridFadeSpeed)`, hidden past the fade.
       All params in `shared/constants.json` `env`. sp.js calls
       `environment.update(player, camera)` *after* the camera is placed.

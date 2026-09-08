@@ -98,7 +98,7 @@ export class Environment {
     mg.setAttribute('position', new THREE.BufferAttribute(verts, 3));
     mg.setAttribute('color', new THREE.BufferAttribute(cols, 3));
     this.motes = new THREE.LineSegments(mg, new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 0.7,
+      vertexColors: true, transparent: true, opacity: E.moteOpacity,
       blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
     }));
     this.motes.frustumCulled = false;
@@ -124,7 +124,9 @@ export class Environment {
     this.sky.position.copy(eye);
 
     // 2. motes: wrap into an axis-aligned box around the eye, then draw
-    //    each as head -> head - vel*k
+    //    each as head -> head - vel*k. No floor on the length: when you're
+    //    nearly still the segments collapse to nothing and the dust vanishes
+    //    (it's purely a speed cue).
     const field = E.moteField;
     const halfF = field * 0.5;
     const b = this._base;
@@ -132,10 +134,6 @@ export class Environment {
 
     const s = this._v.copy(player.velocity).multiplyScalar(-E.moteStreakScale);
     if (s.lengthSq() > E.moteStreakMax * E.moteStreakMax) s.setLength(E.moteStreakMax);
-    if (s.lengthSq() < E.moteMinLen * E.moteMinLen) {
-      // keep a faint shimmer of dust when nearly still
-      s.set(0, E.moteMinLen, 0);
-    }
 
     for (let i = 0; i < E.moteCount; i++) {
       let x = b[i * 3]     + eye.x;

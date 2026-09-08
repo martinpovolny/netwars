@@ -146,9 +146,9 @@
     "moteField": 800,
     "moteColorHead": "#aab6d8",
     "moteColorTail": "#2b3350",
+    "moteOpacity": 0.35,
     "moteStreakScale": 0.05,
-    "moteStreakMax": 160,
-    "moteMinLen": 1,
+    "moteStreakMax": 60,
 
     "gridSize": 16000,
     "gridDivisions": 64,
