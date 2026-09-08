@@ -177,7 +177,7 @@ class Enemy {
       // hold station: face the player, bleed off drift, shoot straight
       const d = this._d.copy(player.position).sub(this.position).normalize();
       this._fly(dt, d, { throttle: 0, brakeAll: 1.2, turn: this.stats.turn * 1.5 });
-      this._tryFire(dt, player.position, weapons, audio, 0.97);
+      this._tryFire(dt, player.position, weapons, audio, 0.95);
       this.stateT += dt;
       if (this.stateT > this.holdFor || toPlayer < 480) { this.state = 'relocate'; this._pickPerch(player); }
     }

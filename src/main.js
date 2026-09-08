@@ -149,7 +149,7 @@ function frame(now) {
     if (enemies.checkRam(player, explosions, audio)) hud.flash('COLLISION', 1.2);
     enemies.checkPodStrikes(pods, explosions, audio);
   }
-  weapons.update(simDt, player, enemies, pods, explosions, audio, onWeaponEvent);
+  weapons.update(simDt, player, enemies, pods, explosions, audio, onWeaponEvent, bonuses);
   explosions.update(simDt);
   starfield.update(player);
   radar.update(player, enemies, pods, bonuses);

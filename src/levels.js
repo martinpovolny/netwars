@@ -59,7 +59,7 @@ export const ENEMY_TYPES = {
     bulk: 1.2,
     score: 250,
     fireRange: 1500,
-    fireGap: [0.9, 1.6],
+    fireGap: [0.45, 0.85],
   },
   commander: {
     name: 'Commander',
@@ -72,7 +72,7 @@ export const ENEMY_TYPES = {
     bulk: 1.6,
     score: 500,
     fireRange: 1300,
-    fireGap: [0.7, 1.2],
+    fireGap: [0.38, 0.65],
   },
 };
 

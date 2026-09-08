@@ -10,9 +10,10 @@ class Bonus {
     this.kind = kind;
     this.position = new THREE.Vector3();
     this.velocity = new THREE.Vector3();
-    this.radius = 34;          // generous — you scoop it up by flying near
+    this.radius = 60;          // generous — scoop it up by flying near OR shooting it
     this.life = 26;            // seconds before it fades away
     this.dead = false;
+    this._collected = false;
     this.mesh = makeBonus(kind);
     scene.add(this.mesh);
     this._t = Math.random() * 6;
@@ -65,6 +66,15 @@ export class Bonuses {
     this.list.push(b);
   }
 
+  // a player projectile at `pos` scores a hit on a bonus -> counts as collecting
+  hitByShot(pos) {
+    for (const b of this.list) {
+      if (b.dead) continue;
+      if (pos.distanceToSquared(b.position) < b.radius * b.radius) { b._collected = true; return true; }
+    }
+    return false;
+  }
+
   // returns a collected bonus {kind} this frame, or null
   update(dt, player, around) {
     let collected = null;
@@ -78,7 +88,7 @@ export class Bonuses {
     for (const b of this.list) {
       if (b.dead) continue;
       b.update(dt);
-      if (player.alive && b.position.distanceToSquared(player.position) < b.radius * b.radius) {
+      if (b._collected || (player.alive && b.position.distanceToSquared(player.position) < b.radius * b.radius)) {
         b.dead = true;
         collected = { kind: b.kind };
       }

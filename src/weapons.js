@@ -123,7 +123,7 @@ export class Weapons {
     return false;
   }
 
-  update(dt, player, enemies, pods, explosions, audio, onKill) {
+  update(dt, player, enemies, pods, explosions, audio, onKill, bonuses) {
     const tp = this.tpos;
     const tc = this.tcol;
     let mi = 0;
@@ -175,6 +175,8 @@ export class Weapons {
             break;
           }
         }
+        // shooting a bonus pod counts as collecting it
+        if (!hit && bonuses && bonuses.hitByShot(this.pos[i])) hit = true;
       } else {
         if (player.alive && this.pos[i].distanceToSquared(player.position) < 100) {
           player.damage(9, audio);
