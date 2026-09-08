@@ -3,8 +3,9 @@
 Working checklist for the shared-core split + online multiplayer. Tick items as
 they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
-**Status:** M0 complete on `shared-core-split` — PR open, awaiting merge +
-production deploy. M1 next.
+**Status:** M0 (`shared-core-split`, PR #6) + M1 (`m1-environment`, stacked)
+both complete and browser-verified — awaiting merge + production deploy.
+M2 (Go server) next.
 
 ---
 
