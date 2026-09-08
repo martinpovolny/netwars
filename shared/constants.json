@@ -125,22 +125,13 @@
   },
 
   "env": {
-    "_note": "3-layer background (client render only). Layer 1: fixed star sphere that tracks the camera POSITION only — stars sweep when you turn, never when you fly. Layer 2: near-field motes that streak with your speed. Layer 3: y=0 grid faded out by speed.",
+    "_note": "3-layer background (client render only). Layer 1: real HYG star catalogue (client/render/stars.json, built by tools/build-stars.mjs) placed by RA/Dec on a sphere that tracks the camera POSITION only — constellations sweep when you turn, never when you fly. Layer 2: near-field motes that streak with your speed. Layer 3: y=0 grid faded out by speed.",
 
     "starRadius": 20000,
-    "starCountDim": 3000,
-    "starCountBright": 700,
-    "starSizeDim": 1.3,
-    "starSizeBright": 2.6,
-    "starColorDim": "#8f9bc4",
-    "starColorBright": "#dee6ff",
-
-    "nebula": [
-      { "dir": [0.35, 0.15, -0.92], "color": "#20305e", "size": 11000 },
-      { "dir": [-0.7, -0.25, 0.66], "color": "#3a2350", "size": 9000 },
-      { "dir": [0.55, 0.72, 0.42], "color": "#164a52", "size": 8000 }
-    ],
-    "nebulaOpacity": 0.09,
+    "starMagLimit": 6.5,
+    "starBucketMag": [2.5, 4.5],
+    "starBucketSize": [3.4, 2.0, 1.15],
+    "starFaintDim": 0.6,
 
     "moteCount": 400,
     "moteField": 800,
