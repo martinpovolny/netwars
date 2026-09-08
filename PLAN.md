@@ -62,14 +62,21 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
       all positions identical; bonuses spawn + fly-in collect + shot collect →
       identical events & residual state. Level win/lose FSM stays in the loop
       until M0.6's `stepWorld`.
-- [ ] **M0.6** `src/` → `client/`; `client/render/entities.js` (sim-state →
-      THREE meshes: create on spawn, copy transform, dispose on death);
-      `client/render/effects.js` (was `explosions.js`, client-only);
-      `client/sp.js` (local loop), `client/net.js` (stub),
-      `client/main.js` (URL-fragment router). Update `index.html`. Delete `src/`.
-- [ ] **M0 verify** — `node --check` all; play levels 1–3 (flight feel, 5 AI
+- [x] **M0.6** `src/` → `client/`; `client/sp.js` (was `main.js` — the local
+      loop), `client/net.js` (stub: logs + falls back to sp), `client/main.js`
+      (parses `#<session>?server_id=&mode=` → net.js, else sp.js). Level
+      win/lose FSM extracted to `shared/sim/rules.js`
+      (`makeLevelFSM`/`stepLevelFSM`, `dt=0` to pause). `index.html` →
+      `client/main.js`. README/SPEC layout updated. Each entity module stayed
+      a thin render wrapper (kept per-file, not a single `entities.js` — same
+      effect, smaller diff). FSM verified: pods-lost → "LEVEL FAILED" → 3 s →
+      restart same level, pods refill; network URL → warn + SP fallback.
+      0 console errors.
+- [ ] **M0 verify** — full manual play of levels 1–3 (flight feel, 5 AI
       behaviours, missile lock, bonuses, spectator death, scanner) unchanged;
       screenshot-compare vs live; deploy split build to Pages, stays green.
+- note: the pure `World` + `stepWorld(world, controls, dt)` consolidation is
+  deferred to the **start of M2** — it's the natural first step of the Go port.
 
 ## M1 — 3-layer environment
 

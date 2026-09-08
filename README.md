@@ -79,7 +79,7 @@ table are generated and keep escalating.
 ## Enemies
 
 Base stats echo the NetWars "Level Goals" screen (Speed / Turn / Shield
-factors, `src/levels.js`); behaviour per class is ours.
+factors, `shared/constants.json`); behaviour per class is ours.
 
 | Class | Target | Behaviour |
 |---|---|---|
@@ -91,21 +91,37 @@ factors, `src/levels.js`); behaviour per class is ours.
 
 ## Layout
 
+Gameplay logic (physics, AI, weapons, pod/bonus/level rules) lives in `shared/`
+as pure modules with no THREE meshes or DOM, so the same code drives the SP
+client, the MP client's prediction, and (ported) the Go server. `client/`
+is rendering + UI.
+
 ```
-index.html          canvas + HUD DOM + CSS + importmap
-src/main.js          scene, lights, render loop, viewports, level & death FSM
-src/input.js         keyboard + pointer-lock mouse deltas
-src/player.js        Newtonian flight, intent marker, cannon + missile
-src/weapons.js       pooled projectiles: dull cannon bolts + guided missiles
-src/enemies.js       5 typed enemies, per-class Newtonian behaviours, quotas
-src/pods.js          protect-the-pods objective + Raider capture
-src/ships.js         hand-built low-poly dart + pod meshes with vector edges
-src/levels.js        enemy roster + behaviours + level goal tables
-src/explosions.js    expanding wire shells + spark sprays
-src/starfield.js     wrapping point stars + reference grid
-src/radar.js         the scanner (own scene, tilted viewport, zoom levels)
-src/orientation.js   the axis tripod (own scene + viewport)
-src/hud.js           DOM HUD updates
+index.html               canvas + HUD DOM + CSS + importmap
+
+shared/
+  constants.json          all tuning: physics, weapons, enemy factors, levels…
+  constants.js            derives ENEMY_TYPES / goalsForLevel from the JSON
+  sim/vec.js              THREE math primitives (the only THREE in shared/)
+  sim/flight.js           stepShip() — Newtonian turn/thrust/brake/integrate
+  sim/ai.js               stepEnemy() — brawler/strafer/sniper/charger/thief
+  sim/weapons.js          Projectiles pool: motion, guidance, collision → events
+  sim/rules.js            pods drift/cull, bonus spawn/collect, level win/lose FSM
+
+client/
+  main.js                 entry: #<session>?server_id=… → net.js, else sp.js
+  sp.js                    single-player loop: scene, render, viewports, camera
+  net.js                   online mode (M2) — stub, falls back to sp.js
+  input.js                 keyboard + pointer-lock mouse deltas
+  player.js  enemies.js  pods.js  bonuses.js  weapons.js
+                           thin render wrappers over the shared sim (mesh sync)
+  ships.js                 hand-built low-poly dart / pod / bonus meshes
+  levels.js                re-exports ENEMY_TYPES / goalsForLevel / PODS_PER_LEVEL
+  explosions.js            expanding wire shells + spark sprays (client-only FX)
+  starfield.js             wrapping point stars + reference grid
+  radar.js                 the scanner (own scene, tilted viewport, zoom levels)
+  orientation.js           the axis tripod (own scene + viewport)
+  hud.js                   DOM HUD updates
 ```
 
 `window.__nw` is a debug hook (`paused`, `player`, `enemies`, `pods`, `radar`, …).

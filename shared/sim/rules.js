@@ -111,3 +111,40 @@ export function stepBonuses(bonuses, player, around, dt, K) {
 export function makeBonuses(K) {
   return { list: [], timer: K.firstDelayMin + Math.random() * K.firstDelayRange, maxAlive: K.maxAlive };
 }
+
+// --------------------------------------------------------- level FSM -------
+
+export function makeLevelFSM() {
+  return { state: 'playing', timer: 0 };   // 'playing' | 'won' | 'lost'
+}
+
+// Call with dt = 0 to pause it (e.g. while the player is dead). ctx:
+//   { podsAlive, enemiesCleared, level }
+// Returns an action the caller performs, or null:
+//   { flash: text, hold: seconds }   — show a banner
+//   { startLevel: n }                — (re)start level n
+export function stepLevelFSM(fsm, ctx, dt) {
+  if (dt <= 0) return null;
+
+  if (fsm.state === 'playing') {
+    if (ctx.podsAlive === 0) {
+      fsm.state = 'lost';
+      fsm.timer = 3.0;
+      return { flash: 'ALL PODS LOST — LEVEL FAILED', hold: 3.0 };
+    }
+    if (ctx.enemiesCleared) {
+      fsm.state = 'won';
+      fsm.timer = 2.8;
+      return { flash: 'LEVEL ' + ctx.level + ' CLEARED', hold: 2.8 };
+    }
+    return null;
+  }
+
+  fsm.timer -= dt;
+  if (fsm.timer <= 0) {
+    const next = fsm.state === 'won' ? ctx.level + 1 : ctx.level;
+    fsm.state = 'playing';
+    return { startLevel: next };
+  }
+  return null;
+}

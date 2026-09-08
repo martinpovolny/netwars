@@ -29,7 +29,7 @@ commitments.
 | Concern | Choice | Why |
 |---|---|---|
 | Client | HTML + ES modules + **Three.js core** from CDN, no build step | Zero install, instant iteration, shareable by link; flat-shaded / wireframe look is native to Three.js |
-| Client hosting | **GitHub Pages** at `www.hmpf.cz/netwars/` (static `index.html` + `src/`) | already live; no build |
+| Client hosting | **GitHub Pages** at `www.hmpf.cz/netwars/` (static `index.html` + `client/` + `shared/`) | already live; no build |
 | Rendering | WebGL via Three.js; three viewports (main + orientation inset + scanner inset) | insets are separate scenes composited with scissor/viewport |
 | Server (phase 2) | **Go**, single static binary, self-hosted on a small box, one open port | tiny footprint, easy deploy (`scp` one file + a systemd unit), goroutine-per-conn scales fine for a handful of arenas |
 | Transport | **WebSocket over TLS (`wss://`)** | the client is served over HTTPS, so a plain `ws://` is blocked as mixed content — TLS is mandatory, not optional |
@@ -402,23 +402,33 @@ Graceful shutdown drains arenas.
 ## 16. Module map
 
 ```
-index.html            canvas + HUD DOM + CSS + importmap
-src/main.js            scene, lights, render loop, viewports, level win/lose FSM
-src/input.js           keyboard + pointer-lock mouse deltas
-src/player.js          Newtonian flight, intent marker, missiles
-src/weapons.js         pooled bolt projectiles, homing, collision
-src/enemies.js         5 typed enemies, per-class Newtonian behaviours, quotas
-src/pods.js            protect-the-pods objective + Raider capture
-src/ships.js           hand-built low-poly dart + pod meshes with vector edges
-src/levels.js          enemy roster + behaviours + level goal tables
-src/explosions.js      wire shells + spark sprays
-src/starfield.js       wrapping point stars + reference grid
-src/radar.js           the scanner (own scene + tilted viewport)
-src/orientation.js     the axis tripod (own scene + viewport)
-src/hud.js             DOM HUD updates
-src/net.js             (phase 2) network mode: wss client, prediction, interp
+index.html             canvas + HUD DOM + CSS + importmap
 
-shared/constants.json  (phase 2) physics/tuning shared by client + Go server
+shared/                pure sim — no THREE meshes, no DOM; the Go port mirrors it
+  constants.json        all tuning: physics, weapons, enemy factors, level tables
+  constants.js          derives ENEMY_TYPES / goalsForLevel from the JSON
+  sim/vec.js            THREE math primitives (the only THREE in shared/)
+  sim/flight.js         stepShip() — Newtonian turn/thrust/brake/integrate
+  sim/ai.js             stepEnemy() — 5 per-class Newtonian behaviours + helpers
+  sim/weapons.js        Projectiles pool: motion, guidance, collision → events
+  sim/rules.js          pods drift/cull, bonus spawn/collect, level win/lose FSM
+
+client/                rendering + UI over the shared sim
+  main.js              entry: #<session>?server_id=… → net.js, else sp.js
+  sp.js                single-player loop: scene, lights, render, viewports, camera
+  net.js               (phase 2) network mode: wss client, prediction, interp — stub
+  input.js             keyboard + pointer-lock mouse deltas
+  player.js            intent-marker easing + cannon/missile fire; delegates flight
+  weapons.js           bolt/missile/trail meshes; maps sim events → FX/audio
+  enemies.js           spawn/quota/leash/ram/pod-strikes; mesh + hull-flash sync
+  pods.js  bonuses.js  thin render wrappers (tumble / pulse / rings)
+  ships.js             hand-built low-poly dart + pod + bonus meshes
+  levels.js            re-exports ENEMY_TYPES / goalsForLevel / PODS_PER_LEVEL
+  explosions.js        wire shells + spark sprays (client-only FX)
+  starfield.js         wrapping point stars + reference grid
+  radar.js             the scanner (own scene + tilted viewport)
+  orientation.js       the axis tripod (own scene + viewport)
+  hud.js               DOM HUD updates
 
 server/                (phase 2) Go module
   cmd/netwars-server/main.go   flags, TLS/autocert, listen, graceful shutdown
