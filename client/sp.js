@@ -7,7 +7,7 @@ import { Enemies } from './enemies.js';
 import { Pods } from './pods.js';
 import { Bonuses } from './bonuses.js';
 import { Explosions } from './explosions.js';
-import { Starfield } from './starfield.js';
+import { Environment } from './render/environment.js';
 import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
@@ -41,7 +41,7 @@ const explosions = new Explosions(scene);
 const enemies = new Enemies(scene);
 const pods = new Pods(scene);
 const bonuses = new Bonuses(scene);
-const starfield = new Starfield(scene);
+const environment = new Environment(scene);
 const radar = new Radar();
 const orient = new OrientationInset();
 const hud = new HUD();
@@ -52,7 +52,7 @@ let deadAt = 0;          // performance.now() when the player was destroyed
 
 enemies.onKill = (e) => { score += e.stats.score; };
 
-window.__nw = { scene, camera, player, enemies, pods, bonuses, weapons, explosions, radar, input, audio, hud, paused: false, get score() { return score; }, get state() { return fsm.state; } };
+window.__nw = { scene, camera, player, enemies, pods, bonuses, weapons, explosions, environment, radar, input, audio, hud, paused: false, get score() { return score; }, get state() { return fsm.state; } };
 
 canvas.addEventListener('mousedown', () => { audio.resume(); hud.hideHelp(); }, { once: true });
 
@@ -151,7 +151,6 @@ function frame(now) {
   }
   weapons.update(simDt, player, enemies, pods, explosions, audio, onWeaponEvent, bonuses);
   explosions.update(simDt);
-  starfield.update(player);
   radar.update(player, enemies, pods, bonuses);
   orient.update(player);
 
@@ -192,6 +191,10 @@ function frame(now) {
     camera.position.copy(specPos);
     camera.quaternion.copy(specQuat);
   }
+
+  // background tracks the final camera position (stars never translate when
+  // you fly), so update it after the camera is placed
+  environment.update(player, camera);
 
   const W = window.innerWidth;
   const H = window.innerHeight;
