@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { K } from '../shared/constants.js';
+import { stepShip } from '../shared/sim/flight.js';
 
 const FWD = new THREE.Vector3(0, 0, -1);
 const RIGHT = new THREE.Vector3(1, 0, 0);
@@ -31,26 +33,19 @@ export class Player {
     this.mouse = new THREE.Vector2(0, 0);   // raw cursor (tiny white rect)
     this.intent = new THREE.Vector2(0, 0);  // deployed direction marker
 
-    // tuning — Newtonian: thrust/reverse are impulses, momentum persists
-    this.thrustAccel = 240;   // u/s^2 along the nose
-    this.brakeAccel = 320;    // u/s^2 bleeding speed along the facing axis
-    this.boostMult = 2.4;
-    this.drag = 0.02;         // almost none — momentum stays
-    this.maxSpeed = 620;
-    this.mouseGain = 0.0042;   // px -> deflection
-    this.intentLag = 8;        // how fast the marker chases the cursor
-    this.mouseRecenter = 0.35; // gentle pull of the cursor back to centre
-    this.turnFactor = 1.9;     // rad/s at full deflection
-    this.rollRate = 2.0;
-    this.gunInterval = 0.1;    // unlimited dull cannon
-    this.missileInterval = 0.35;
-    this.missileMuzzle = 700;  // constant added to ship momentum on launch
-    this.missileLife = 4.5;    // limited lifespan (s)
+    // Newtonian flight tuning now lives in shared/constants.json (K.player);
+    // stepShip() reads it. These are client-side feel knobs only:
+    this.maxSpeed = K.player.maxSpeed;   // kept for the V-gauge readout
+    this.mouseGain = K.player.mouseGain;
+    this.intentLag = K.player.intentLag;
+    this.mouseRecenter = K.player.mouseRecenter;
+    this.gunInterval = K.player.gunInterval;
+    this.missileInterval = K.player.missileInterval;
+    this.missileMuzzle = K.player.missileMuzzle;
+    this.missileLife = K.player.missileLife;
     this._gunCd = 0;
     this._mslCd = 0;
 
-    this._dq = new THREE.Quaternion();
-    this._e = new THREE.Euler();
     this._f = new THREE.Vector3();
     this._r = new THREE.Vector3();
     this._u = new THREE.Vector3();
@@ -78,39 +73,28 @@ export class Player {
     this.intent.x += (this.mouse.x - this.intent.x) * k;
     this.intent.y += (this.mouse.y - this.intent.y) * k;
 
-    // --- turn the ship toward the marker (rate-limited) ---
-    let roll = 0;
-    if (input.has('KeyA')) roll += this.rollRate * dt;
-    if (input.has('KeyD')) roll -= this.rollRate * dt;
-    const yaw = -this.intent.x * this.turnFactor * dt;
-    const pitch = -this.intent.y * this.turnFactor * dt;
-    this._e.set(pitch, yaw, roll, 'XYZ');
-    this._dq.setFromEuler(this._e);
-    this.quaternion.multiply(this._dq).normalize();
-
-    // --- thrust / reverse: impulses along the nose; momentum persists ---
+    // --- Newtonian flight (shared sim) ---
     this.boosting = input.has('ShiftLeft') || input.has('ShiftRight');
-    const boost = this.boosting ? this.boostMult : 1;
-    const fwd = this.forward(this._f);
-
     let thrusting = 0;
     if (input.has('KeyW') || input.has('ArrowUp')) thrusting += 1;
     if (input.has('KeyS') || input.has('ArrowDown')) thrusting -= 1;
     this.thrusting = thrusting;
-    if (thrusting) this.velocity.addScaledVector(fwd, thrusting * this.thrustAccel * boost * dt);
 
-    // brake (C): bleed off speed along the facing axis, either direction
-    if (input.has('KeyC')) {
-      const along = this.velocity.dot(fwd);
-      const cut = Math.sign(along) * Math.min(Math.abs(along), this.brakeAccel * dt);
-      this.velocity.addScaledVector(fwd, -cut);
-    }
-    // full stop (X): quickly null all momentum
-    if (input.has('KeyX')) this.velocity.multiplyScalar(Math.max(0, 1 - 4 * dt));
+    let roll = 0;
+    if (input.has('KeyA')) roll += 1;
+    if (input.has('KeyD')) roll -= 1;
 
-    this.velocity.multiplyScalar(Math.max(0, 1 - this.drag * dt));
-    if (this.velocity.length() > this.maxSpeed) this.velocity.setLength(this.maxSpeed);
-    this.position.addScaledVector(this.velocity, dt);
+    stepShip(this, {
+      intentX: this.intent.x,
+      intentY: this.intent.y,
+      roll,
+      thrust: thrusting,
+      brake: input.has('KeyC'),
+      boost: this.boosting,
+      stop: input.has('KeyX'),
+    }, dt, K.player);
+
+    const fwd = this.forward(this._f);
 
     // --- primary: unlimited dull cannon (Space / LMB) ---
     // fired from wing pods set back beside/below the cockpit, so the bolts
