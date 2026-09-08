@@ -165,20 +165,20 @@ export function makeBonus(kind) {
   const g = new THREE.Group();
 
   const shell = new THREE.Mesh(
-    new THREE.OctahedronGeometry(11, 0),
+    new THREE.OctahedronGeometry(20, 0),
     new THREE.MeshStandardMaterial({ color: col, flatShading: true, emissive: col, emissiveIntensity: 0.35, transparent: true, opacity: 0.55, roughness: 0.4 })
   );
   g.add(shell);
   g.add(new THREE.LineSegments(new THREE.EdgesGeometry(shell.geometry), new THREE.LineBasicMaterial({ color: bright(col, 0.5) })));
 
   const core = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(4.5, 0),
+    new THREE.IcosahedronGeometry(8, 0),
     new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })
   );
   g.add(core);
 
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(15, 0.7, 6, 20),
+    new THREE.TorusGeometry(28, 1.3, 6, 24),
     new THREE.MeshBasicMaterial({ color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.9 })
   );
   ring.rotation.x = Math.PI / 2.3;
@@ -188,11 +188,11 @@ export function makeBonus(kind) {
   // a tiny glyph so the two kinds read differently up close
   const glyphMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   if (kind === 'repair') {
-    const v = new THREE.Mesh(new THREE.BoxGeometry(2, 8, 2), glyphMat);
-    const h = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 2), glyphMat);
+    const v = new THREE.Mesh(new THREE.BoxGeometry(3.5, 15, 3.5), glyphMat);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(15, 3.5, 3.5), glyphMat);
     g.add(v, h);
   } else {
-    const rocket = new THREE.Mesh(new THREE.ConeGeometry(2, 9, 6), glyphMat);
+    const rocket = new THREE.Mesh(new THREE.ConeGeometry(3.5, 16, 6), glyphMat);
     rocket.rotation.x = -Math.PI / 2;
     g.add(rocket);
   }
