@@ -1,81 +1,58 @@
 import * as THREE from 'three';
 import { makePod } from './ships.js';
+import { K } from '../shared/constants.js';
+import { spawnPods, stepPods, recentrePods } from '../shared/sim/rules.js';
 
-// Pods are the objective: protect them. A level is lost if every pod is
-// destroyed. They do NOT respawn during a level.
-class Pod {
-  constructor(scene) {
-    this.position = new THREE.Vector3();
-    this.velocity = new THREE.Vector3();
-    this.spin = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.6,
-      (Math.random() - 0.5) * 0.6,
-      (Math.random() - 0.5) * 0.6
-    );
-    this.hp = 24;
-    this.radius = 28;
-    this.dead = false;
-    this.captor = null;      // set to a Raider while it hauls this pod away
-    this.mesh = makePod();
-    scene.add(this.mesh);
-  }
-
-  update(dt) {
-    if (!this.captor) this.position.addScaledVector(this.velocity, dt);
-    this.mesh.position.copy(this.position);
-    this.mesh.rotation.x += this.spin.x * dt;
-    this.mesh.rotation.y += this.spin.y * dt;
-    this.mesh.rotation.z += this.spin.z * dt;
-  }
-
-  dispose(scene) { scene.remove(this.mesh); }
-}
-
+// Render side of the pods: the sim state lives in shared/sim/rules.js; this
+// wraps it and keeps a THREE mesh per pod (position + visual tumble).
 export class Pods {
   constructor(scene) {
     this.scene = scene;
-    this.list = [];
-    this.total = 0;
-    this.lost = 0;
-    this.centroid = new THREE.Vector3();
+    this._sim = { list: [], centroid: new THREE.Vector3(), lost: 0, total: 0 };
+    this._meshes = new Map();   // podState -> THREE.Group
   }
+
+  get list() { return this._sim.list; }
+  get centroid() { return this._sim.centroid; }
+  get total() { return this._sim.total; }
+  get alive() { return this._sim.list.length; }
 
   spawnLevel(count, around = new THREE.Vector3()) {
     this.clear();
-    this.total = count;
-    this.lost = 0;
-    for (let i = 0; i < count; i++) {
-      const p = new Pod(this.scene);
-      // a loose cluster you can patrol
-      p.position.copy(new THREE.Vector3().randomDirection().multiplyScalar(260 + Math.random() * 520)).add(around);
-      p.velocity.copy(new THREE.Vector3().randomDirection().multiplyScalar(3 + Math.random() * 5));
-      this.list.push(p);
-    }
-    this._recentre();
+    this._sim.list = spawnPods(count, around, K.pods);
+    this._sim.total = count;
+    this._sim.lost = 0;
+    for (const p of this._sim.list) this._attach(p);
+    recentrePods(this._sim);
   }
 
-  _recentre() {
-    if (this.list.length === 0) return;
-    this.centroid.set(0, 0, 0);
-    for (const p of this.list) this.centroid.add(p.position);
-    this.centroid.multiplyScalar(1 / this.list.length);
+  _attach(p) {
+    const m = makePod();
+    m.position.copy(p.position);
+    this.scene.add(m);
+    this._meshes.set(p, m);
   }
 
   update(dt) {
-    for (const p of this.list) if (!p.dead) p.update(dt);
-    const keep = [];
-    for (const p of this.list) {
-      if (p.dead) { p.dispose(this.scene); this.lost++; }
-      else keep.push(p);
+    stepPods(this._sim, dt);
+    // drop meshes for culled pods
+    for (const [p, m] of this._meshes) {
+      if (!this._sim.list.includes(p)) { this.scene.remove(m); this._meshes.delete(p); }
     }
-    this.list = keep;
-    this._recentre();
+    // sync survivors
+    for (const p of this._sim.list) {
+      const m = this._meshes.get(p);
+      if (!m) continue;
+      m.position.copy(p.position);
+      m.rotation.x += p.spin.x * dt;
+      m.rotation.y += p.spin.y * dt;
+      m.rotation.z += p.spin.z * dt;
+    }
   }
 
-  get alive() { return this.list.length; }
-
   clear() {
-    for (const p of this.list) p.dispose(this.scene);
-    this.list = [];
+    for (const m of this._meshes.values()) this.scene.remove(m);
+    this._meshes.clear();
+    this._sim.list = [];
   }
 }

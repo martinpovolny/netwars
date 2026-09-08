@@ -52,9 +52,16 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
       identical after 180 steps (a lone `audio.hit` diff was a test-stub
       artifact — real `player.damage` still triggers it via the `!absorbed`
       event). 0 console errors.
-- [ ] **M0.5** `shared/sim/rules.js` + `shared/sim/world.js` — the `World`
-      container; pod drift/capture, bonus spawn cadence + collect, level
-      win/lose FSM. Move the last tuning literals into `constants.json`.
+- [x] **M0.5** `shared/sim/rules.js` — `spawnPods`/`stepPods`/`recentrePods`
+      (drift when uncaptured, cull → `lost`, recentre) and
+      `makeBonuses`/`stepBonuses`/`bonusHitByShot` (spawn cadence + need-bias,
+      drift, life, fly-in *or* shot collect). `src/pods.js` + `src/bonuses.js`
+      wrap the sim and keep one THREE mesh per entity (tumble / pulse / rings).
+      `spin` and `_t` carried on the state so RNG order matches exactly.
+      Parity-verified: pods 240 steps (drift + kills + capture) → centroid &
+      all positions identical; bonuses spawn + fly-in collect + shot collect →
+      identical events & residual state. Level win/lose FSM stays in the loop
+      until M0.6's `stepWorld`.
 - [ ] **M0.6** `src/` → `client/`; `client/render/entities.js` (sim-state →
       THREE meshes: create on spawn, copy transform, dispose on death);
       `client/render/effects.js` (was `explosions.js`, client-only);
