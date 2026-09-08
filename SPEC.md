@@ -263,9 +263,17 @@ drifting; freeing it (killing the Raider) clears `captor`.
 
 - **Flat-shaded low-poly** ships + **bright vector edge lines** (EdgesGeometry).
   Hull grey/white, per-player/-class accent stripe and canopy.
-- Black space (`#02040a`), exponential fog, white non-attenuated point stars
-  (~3800, wrapped around the player for an infinite field), faint blue reference
-  grid on y=0 for spatial sense.
+- Black space (`#02040a`), exponential fog, and a **3-layer environment**
+  (`client/render/environment.js`, tuned from `constants.json` `env`):
+  1. **Fixed star sphere** — ~3700 non-attenuated points on a large shell plus
+     three dim additive nebula blobs. Tracks the camera *position* every frame
+     and nothing else, so stars sweep past when you turn but never translate
+     when you fly. Unfogged.
+  2. **Near-field motes** — ~400 dust points wrapped in an ~800u box around the
+     eye, drawn as short streaks scaled by your velocity (a speed cue, capped
+     so it never becomes a hyperspace tunnel).
+  3. **Reference grid** — the faint blue y=0 grid, its opacity fading to zero
+     as speed climbs (present when hovering, gone in a dogfight).
 - Explosions: expanding amber wireframe shell + point-spray sparks.
 - HUD is thin monospace, phosphor colors, subtle glow. CRT scanlines optional.
 
@@ -425,7 +433,7 @@ client/                rendering + UI over the shared sim
   ships.js             hand-built low-poly dart + pod + bonus meshes
   levels.js            re-exports ENEMY_TYPES / goalsForLevel / PODS_PER_LEVEL
   explosions.js        wire shells + spark sprays (client-only FX)
-  starfield.js         wrapping point stars + reference grid
+  render/environment.js  3-layer background: fixed star sphere, speed motes, faded grid
   radar.js             the scanner (own scene + tilted viewport)
   orientation.js       the axis tripod (own scene + viewport)
   hud.js               DOM HUD updates

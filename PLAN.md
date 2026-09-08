@@ -3,8 +3,9 @@
 Working checklist for the shared-core split + online multiplayer. Tick items as
 they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
-**Status:** M0 complete on `shared-core-split` — PR open, awaiting merge +
-production deploy. M1 next.
+**Status:** M0 (`shared-core-split`, PR #6) + M1 (`m1-environment`, stacked)
+both complete and browser-verified — awaiting merge + production deploy.
+M2 (Go server) next.
 
 ---
 
@@ -85,11 +86,16 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
 
 ## M1 — 3-layer environment
 
-- [ ] **M1** replace `starfield.js` with `client/render/environment.js`:
-      (1) fixed star sphere (follows camera *position* only, unfogged,
-      procedural points + 2–3 nebula blobs); (2) ~400 near-field motes wrapped
-      in an ~800u sphere, streak at speed; (3) y=0 grid, opacity faded by speed.
-      Params in `shared/constants.json` (`env` block).
+- [x] **M1** `starfield.js` → `client/render/environment.js`:
+      (1) fixed star sphere — 3000 dim + 700 bright non-attenuated points on a
+      20k shell, 3 additive nebula sprites; group `.position.copy(camera)` each
+      frame, nothing else; all `fog:false`. (2) 400 motes in an 800u box around
+      the eye, wrapped, drawn as `LineSegments` streaks `head → head − vel·k`
+      (capped at 160u; a 2u y-shimmer at rest). (3) `GridHelper` opacity
+      `gridOpacityMax · max(0, 1 − speed/gridFadeSpeed)`, hidden past the fade.
+      All params in `shared/constants.json` `env`. sp.js calls
+      `environment.update(player, camera)` *after* the camera is placed.
+      README / SPEC updated.
 
 ## M2 — Go server + `net.js`, co-op
 
