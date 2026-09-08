@@ -42,8 +42,16 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
       tactical literals stay in ai.js (ported with the Go twin, golden-vector
       test guards them). Parity-verified vs. the old code for all 5 behaviours
       over 200 seeded steps: pos/vel deltas 0, quat ~1e-8 (angleTo rounding).
-- [ ] **M0.4** `shared/sim/weapons.js` — projectile motion, missile self-propel
-      + guidance, collision math (returns hit events; no THREE meshes / FX).
+- [x] **M0.4** `shared/sim/weapons.js` — `class Projectiles` (pooled state) +
+      `step(dt, world, K)` doing motion, missile self-propel + guidance, and
+      collisions; applies hp/dead/ttl outcomes and returns events
+      (`enemyHit`/`enemyKill`/`missileBurst`/`playerHit`/`podHit`/`podKill`).
+      `src/weapons.js` wraps the pool, maps events → `explosions.*`/`audio.*`/
+      `onKill('podlost')`, and keeps all the bolt/missile/trail meshes.
+      Parity-verified: positions, hp, dead flags, FX counts, podlost all
+      identical after 180 steps (a lone `audio.hit` diff was a test-stub
+      artifact — real `player.damage` still triggers it via the `!absorbed`
+      event). 0 console errors.
 - [ ] **M0.5** `shared/sim/rules.js` + `shared/sim/world.js` — the `World`
       container; pod drift/capture, bonus spawn cadence + collect, level
       win/lose FSM. Move the last tuning literals into `constants.json`.
