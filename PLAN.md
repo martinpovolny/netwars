@@ -30,9 +30,11 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
 - [x] **M0.1** `shared/constants.json` + `shared/constants.js` — all enemy-type
       factors + level tables; derives `ENEMY_TYPES` / `goalsForLevel`.
       `src/levels.js` is a thin re-export.  *(89e34fa)*
-- [ ] **M0.2** `shared/sim/vec.js` (THREE math re-export) + `shared/sim/flight.js`
-      `stepShip(state, control, dt, K)`. `player.js` → state + a `control`
-      struct built from `Input`. Intent-marker easing stays client-side.
+- [x] **M0.2** `shared/sim/vec.js` (THREE math re-export) + `shared/sim/flight.js`
+      `stepShip(ship, control, dt, K.player)`. `player.js` builds a `control`
+      struct from `Input` and delegates the movement block; intent-marker
+      easing + fire logic stay in `player.js`. Parity-verified vs. the old
+      math: 400-step varied control script, pos/vel/quat deltas exactly 0.
 - [ ] **M0.3** `shared/sim/ai.js` — `stepEnemy(e, world, dt, K)` covering
       brawler / strafer / sniper / charger / thief + the leash. `enemies.js`
       keeps spawning/quota bookkeeping, delegates the per-enemy step.
