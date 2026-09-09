@@ -5,10 +5,10 @@ they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
 **Status:** M0 + M1 merged & deployed to `www.hmpf.cz/netwars/`. Follow-ups
 also in: mote polish, real HYG star catalogue, leading enemy fire.
-**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1–M2.3 done:
-`stepWorld` consolidated + parity-verified; full `shared/sim` ported to Go,
-`TestGoldenParity` green (600 frames, 1e-4). M2.4 next — WebSocket transport
-+ arena loop (`coder/websocket`).**
+**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1–M2.4 done:
+`stepWorld` consolidated + parity-verified; `shared/sim` ported to Go (golden
+parity green); WebSocket transport + arena loop live (`TestArenaEndToEnd`
+green). M2.5 next — real `client/net.js`.**
 
 ---
 
@@ -157,12 +157,18 @@ manual one-off; not part of build or CI.)
       cannon cadence) and matches all 600 frames within 1e-4 — score, level,
       FSM, ship, every enemy / pod / bonus / live projectile. PASSES.**
       `go vet && go build && go test ./...` green. No client impact, no Node.
-- [ ] **M2.4** Transport + arena: `ws/conn.go` (coder/websocket, read/write
-      pumps, JSON frames), `proto/` (`hello`/`input`/`ping` ↔
-      `welcome`/`snapshot`/`event`/`pong`), `game/session.go` (session_id →
-      `*Arena`, create on first join, drop when empty), `game/arena.go`
-      (one goroutine: 60 Hz sim, 25 Hz snapshot broadcast, 1 Hz ping),
-      `game/snapshot.go`.
+- [x] **M2.4** *(m2-world: 8b88f4f)* Transport + arena. `proto/` (hello /
+      input / ping ↔ welcome / snapshot / event / pong / error, compact
+      JSON). `game/flight.go` (`StepShip` twin). `game/session.go` (session_id
+      → `*Arena`, drop when empty). `game/arena.go` (one goroutine: 60 Hz
+      `StepShip`+`fireWeapons`+`StepWorld`, snapshot every 2nd tick ≈ 30 Hz,
+      event batches as they happen). `game/snapshot.go`. `game/serve.go`
+      (`HandleConn`: accept, hello handshake, read/write pumps).
+      `cmd/netwars-server` now serves `/ws` + `/healthz` with graceful
+      shutdown. `TestArenaEndToEnd` (real ws dial): welcome→snapshots, tick
+      advances, ackSeq tracks input, fleet moves, cannon fire lands,
+      ping↔pong, arena tears down on leave. `StepWorld` still targets one
+      focus ship — N-ship authority is M2.6.
 - [ ] **M2.5** `client/net.js` real impl (replaces the stub): parse
       `#session?server_id&mode`, open `wss://<server_id>/ws`, `hello` →
       `welcome` seeds a local `World`; each frame send `input` (seq+t) and
