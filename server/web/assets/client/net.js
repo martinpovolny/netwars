@@ -8,6 +8,7 @@
 // Client-side interpolation of remote entities and full input reconciliation
 // against ackSeq are M2.5b.
 import * as THREE from 'three';
+import { stepShip } from '../shared/sim/flight.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { Player } from './player.js';
@@ -115,6 +116,8 @@ function runOnline({ ws, welcome }, { mode }) {
     score: welcome.snapshot.score || 0,
     others: [],           // other players' ships (meshes)
   };
+  const inputLog = [];   // { seq, ctrl, dt } — a sent input, kept until the server acks it
+
   enemies.attach(world.fleet);
   pods.attach(world.pods);
   bonuses.attach(world.bonuses);
@@ -226,9 +229,9 @@ function runOnline({ ws, welcome }, { mode }) {
     return best;
   }
 
-  // ---- input send ---------------------------------------------
+  // ---- input send + prediction log ---------------------------
   let seq = 0;
-  function sendInput() {
+  function sendInput(dt) {
     if (ws.readyState !== WebSocket.OPEN) return;
     let roll = 0;
     if (input.has('KeyA')) roll += 1;
@@ -236,13 +239,22 @@ function runOnline({ ws, welcome }, { mode }) {
     let thrust = 0;
     if (input.has('KeyW') || input.has('ArrowUp')) thrust += 1;
     if (input.has('KeyS') || input.has('ArrowDown')) thrust -= 1;
-    const mt = player.lockTarget ? enemies.list.indexOf(player.lockTarget) : -1;
-    ws.send(JSON.stringify({
-      type: 'input', seq: ++seq, t: performance.now(),
-      ix: player.intent.x, iy: player.intent.y, roll, thrust,
+    // the exact control frame the server will integrate — logged so we can
+    // replay the ones it hasn't acked yet on top of the next snapshot
+    const ctrl = {
+      intentX: player.intent.x, intentY: player.intent.y, roll, thrust,
       brake: input.has('KeyC'),
       boost: input.has('ShiftLeft') || input.has('ShiftRight'),
       stop: input.has('KeyX'),
+    };
+    const n = ++seq;
+    inputLog.push({ seq: n, ctrl, dt });
+    if (inputLog.length > 240) inputLog.shift();
+    const mt = player.lockTarget ? enemies.list.indexOf(player.lockTarget) : -1;
+    ws.send(JSON.stringify({
+      type: 'input', seq: n, t: performance.now(),
+      ix: ctrl.intentX, iy: ctrl.intentY, roll, thrust,
+      brake: ctrl.brake, boost: ctrl.boost, stop: ctrl.stop,
       gun: input.has('Space') || input.mouseFire,
       msl: input.has('KeyF') || input.mouseRight,
       mt,
@@ -271,61 +283,57 @@ function runOnline({ ws, welcome }, { mode }) {
         // the actual (re)start (has start). Only the restart resets the ship —
         // resetting on the banner too was the visible "screen resets twice".
         if (ev.flash) hud.flash(ev.flash, ev.hold || 2.5);
-        if (ev.start) player.reset();
+        if (ev.start) { player.reset(); inputLog.length = 0; }
         break;
     }
   }
 
   // ---- snapshot -> world ------------------------------------
-  const _v = new THREE.Vector3();
-  const _sq = new THREE.Quaternion();
-  // reconcile smoothing: each snapshot moves player.position straight to the
-  // authoritative value, but the leftover jump is parked in camErr and eased
-  // out over a few frames so the *view* doesn't judder at the snapshot rate.
-  // (proper unacked-input replay is M2.5b; this just hides the pop.)
+  // reconcile scratch: authoritative ship state + replay of unacked inputs.
+  const _recon = { position: new THREE.Vector3(), velocity: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+  // camErr holds the still-visible part of a correction; the frame loop eases
+  // it to zero so the *view* doesn't pop at the snapshot rate. Kept small — it
+  // offsets the camera from where the server spawns our bolts.
   const camErr = new THREE.Vector3();
   function applySnapshot(s, first) {
     world.fleet.level = s.level;
     world.score = s.score;
     world.fsm.state = s.fsm;
 
-    // own ship: authoritative for hull/missiles/alive; nudge position toward
-    // the server (crude reconcile — proper prediction reconcile is M2.5b)
     const sh = s.ship;
     player.hull = sh.hull;
     player.missiles = sh.msl;
     player.alive = sh.alive;
     if (first) {
+      inputLog.length = 0;
       player.position.set(sh.p[0], sh.p[1], sh.p[2]);
       player.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
       player.quaternion.set(sh.q[0], sh.q[1], sh.q[2], sh.q[3]);
     } else {
-      _v.set(sh.p[0], sh.p[1], sh.p[2]);
-      const err = player.position.distanceTo(_v);
+      // Prediction reconcile: drop inputs the server has acked, anchor on the
+      // authoritative ship, then re-apply every input still in flight through
+      // the same integrator the server uses. The result is a "present" that
+      // agrees with the server AND with what we've already sent — no yank
+      // back by ~RTT of movement every snapshot. Unpredicted server effects
+      // (a hit, a ram, a knockback) survive as a real correction.
+      const ack = s.ackSeq | 0;
+      while (inputLog.length && inputLog[0].seq <= ack) inputLog.shift();
+      _recon.position.set(sh.p[0], sh.p[1], sh.p[2]);
+      _recon.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
+      _recon.quaternion.set(sh.q[0], sh.q[1], sh.q[2], sh.q[3]);
+      for (const e of inputLog) stepShip(_recon, e.ctrl, e.dt, K.player);
+
+      const err = player.position.distanceTo(_recon.position);
       if (err > 200) {
-        player.position.copy(_v);   // big desync / respawn — hard snap, view included
-        player.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
-        camErr.set(0, 0, 0);
+        camErr.set(0, 0, 0);            // respawn / gross desync — snap the view too
       } else {
-        // carry (oldPos - authoritative) into camErr, then move the ship to
-        // authoritative: camera = player.position + camErr stays continuous.
-        // keep the cap small — camErr offsets the *view* from where the
-        // server spawns our bolts, so a big one makes the muzzle point drift.
-        camErr.add(player.position).sub(_v);
+        camErr.add(player.position).sub(_recon.position);
         const m = camErr.length();
         if (m > 18) camErr.multiplyScalar(18 / m);
-        player.position.copy(_v);
-        // keep velocity purely predicted while the gap is small — writing a
-        // ~1-RTT-stale server velocity every snapshot kinks the integrated
-        // path and reads as jitter. Only adopt it when the gap is big enough
-        // to mean an unpredicted event (hit / knockback / hard turn).
-        if (err > 12) player.velocity.lerp(_v.set(sh.v[0], sh.v[1], sh.v[2]), 0.5);
       }
-      // orientation is otherwise 100% predicted and drifts unbounded from the
-      // server — which swings the wing hardpoints the server fires bolts from,
-      // so our shots seem to start from a wandering point. Ease it back.
-      _sq.set(sh.q[0], sh.q[1], sh.q[2], sh.q[3]);
-      if (player.quaternion.angleTo(_sq) > 0.001) player.quaternion.slerp(_sq, 0.12);
+      player.position.copy(_recon.position);
+      player.velocity.copy(_recon.velocity);
+      player.quaternion.copy(_recon.quaternion);
     }
 
     syncOthers(s.others || []);
@@ -432,7 +440,7 @@ function runOnline({ ws, welcome }, { mode }) {
 
     // predict own ship (movement only; fire is server-side)
     player.update(dt, input, predictWeapons, enemies, audio);
-    sendInput();
+    sendInput(dt);
 
     // advance projectile ages locally so the enemy-bolt strobe animates
     const pr = world.projectiles;

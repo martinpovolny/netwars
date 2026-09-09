@@ -39,8 +39,14 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, "ok arenas=%d\n", sessions.Count())
 	})
-	// everything else -> the embedded game client ("/" -> index.html)
-	mux.Handle("/", http.FileServer(http.FS(web.FS)))
+	// everything else -> the embedded game client ("/" -> index.html).
+	// The client is unversioned ES modules; tell the browser to revalidate so
+	// a redeploy takes effect on the next load instead of serving a stale mix.
+	fs := http.FileServer(http.FS(web.FS))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		fs.ServeHTTP(w, r)
+	}))
 
 	srv := &http.Server{
 		Addr:              *addr,
