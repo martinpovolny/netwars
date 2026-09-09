@@ -1,2 +1,3 @@
 /netwars-server
-/netwars-server-linux-arm64
+/netwars-server-linux-*
+/.last-build

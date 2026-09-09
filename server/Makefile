@@ -1,9 +1,10 @@
 # netwars-server build + deploy helpers.
 #
-# The box is an ARM64 Linux host (Oracle Cloud Ampere) reached over VPN via the
-# ssh alias `vpn-ora-m`, with Caddy already terminating TLS on 80/443.
+# The box is a Linux host (Oracle Cloud) reached over VPN via the ssh alias
+# `vpn-ora-m`, with Caddy already terminating TLS on 80/443. The deploy target
+# asks the box `uname -m` and cross-builds for whatever it actually is.
 #
-#   make deploy            # vet + test + build arm64 + upload + restart
+#   make deploy            # vet + test + build for the box + upload + restart
 #   make logs              # tail journalctl on the box
 #   make healthz           # curl the public URL
 #
@@ -14,12 +15,11 @@ SSH ?= vpn-ora-m
 REMOTE_BIN ?= /usr/local/bin/netwars-server
 PUBLIC_URL ?= https://netwars.hmpf.cz
 BIN := netwars-server
-ARM := $(BIN)-linux-arm64
 
 GO ?= go
 BUILD := $(GO) build -trimpath -ldflags "-s -w"
 
-.PHONY: all test vet build build-arm64 upload deploy install-unit reload-caddy restart logs healthz clean
+.PHONY: all test vet build build-remote upload deploy install-unit reload-caddy restart logs healthz clean
 
 all: vet test build
 
@@ -33,13 +33,25 @@ vet:
 build:
 	$(BUILD) -o $(BIN) ./cmd/netwars-server
 
-# the artifact that ships to the box
-build-arm64:
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 $(BUILD) -o $(ARM) ./cmd/netwars-server
-	@command -v shasum >/dev/null && shasum -a 256 $(ARM) || sha256sum $(ARM)
+# cross-build for the box's actual architecture -> $(BIN)-linux-<goarch>,
+# path recorded in .last-build for `upload`.
+build-remote:
+	@arch=$$(ssh $(SSH) 'uname -m'); \
+	case "$$arch" in \
+	  x86_64)  ga=amd64 ;; \
+	  aarch64|arm64) ga=arm64 ;; \
+	  armv7l|armv7) ga=arm ;; \
+	  *) echo "unknown remote arch: $$arch" >&2; exit 1 ;; \
+	esac; \
+	out=$(BIN)-linux-$$ga; \
+	echo "box is $$arch -> GOOS=linux GOARCH=$$ga"; \
+	GOOS=linux GOARCH=$$ga CGO_ENABLED=0 $(BUILD) -o $$out ./cmd/netwars-server; \
+	{ command -v shasum >/dev/null && shasum -a 256 $$out || sha256sum $$out; }; \
+	echo $$out > .last-build
 
-upload: build-arm64
-	scp $(ARM) $(SSH):/tmp/$(BIN).new
+upload: build-remote
+	@out=$$(cat .last-build); \
+	scp $$out $(SSH):/tmp/$(BIN).new; \
 	ssh $(SSH) 'sudo install -m 0755 -o root -g root /tmp/$(BIN).new $(REMOTE_BIN) && rm -f /tmp/$(BIN).new'
 
 deploy: vet test upload restart
@@ -64,4 +76,4 @@ healthz:
 	curl -fsS $(PUBLIC_URL)/healthz
 
 clean:
-	rm -f $(BIN) $(ARM)
+	rm -f $(BIN) $(BIN)-linux-* .last-build

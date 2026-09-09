@@ -1,8 +1,10 @@
 # Deploying netwars-server
 
-Box: **ARM64 Linux, Oracle Cloud Ampere**, static public IP, **Caddy already
+Box: **Linux, Oracle Cloud, x86-64**, static public IP, **Caddy already
 running** on `:80` / `:443`. Reached over VPN via the ssh alias **`vpn-ora-m`**
 (that's the Makefile default; override with `make deploy SSH=user@host`).
+`make deploy` runs `uname -m` on the box and cross-builds for whatever it is,
+so the arch is never hard-coded.
 
 TLS is Caddy's job; the Go binary speaks plain `ws://` on `127.0.0.1:8080`.
 The client (GitHub Pages, `https://www.hmpf.cz/netwars/`) connects to
@@ -35,7 +37,7 @@ The Go server's `:8080` stays on loopback — never exposed.
 
 ```sh
 make install-unit          # scp the unit, daemon-reload, enable --now
-make deploy                # vet + test + build arm64 + upload + restart
+make deploy                # vet + test + build for the box + upload + restart
 ssh vpn-ora-m 'curl -s localhost:8080/healthz'    # -> ok arenas=0
 ```
 
@@ -71,7 +73,7 @@ Then a WebSocket smoke: connect to `wss://netwars.hmpf.cz/ws`, send
 ## Updating
 
 ```sh
-make deploy      # vet + test + build-arm64 + upload + restart + status
+make deploy      # vet + test + build + upload + restart + status
 make logs        # journalctl -u netwars-server -f
 make healthz
 ```
