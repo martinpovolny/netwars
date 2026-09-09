@@ -19,9 +19,20 @@ BIN := netwars-server
 GO ?= go
 BUILD := $(GO) build -trimpath -ldflags "-s -w"
 
-.PHONY: all test vet build build-remote upload deploy install-unit reload-caddy restart logs healthz clean
+.PHONY: all web test vet build build-remote upload deploy install-unit reload-caddy restart logs healthz clean
 
 all: vet test build
+
+# refresh the embedded game client from the repo root (index.html + client/ +
+# shared/). Run after changing the client; the tree is committed so `go build`
+# always works, this just re-syncs it.
+web:
+	rm -rf web/assets
+	mkdir -p web/assets
+	cp ../index.html web/assets/index.html
+	cp -R ../client web/assets/client
+	cp -R ../shared web/assets/shared
+	@find web/assets -type f | wc -l | xargs echo "web/assets files:"
 
 test:
 	$(GO) test ./...
@@ -34,8 +45,9 @@ build:
 	$(BUILD) -o $(BIN) ./cmd/netwars-server
 
 # cross-build for the box's actual architecture -> $(BIN)-linux-<goarch>,
-# path recorded in .last-build for `upload`.
-build-remote:
+# path recorded in .last-build for `upload`. `web` first so the binary always
+# ships the current client.
+build-remote: web
 	@arch=$$(ssh $(SSH) 'uname -m'); \
 	case "$$arch" in \
 	  x86_64)  ga=amd64 ;; \

@@ -6,9 +6,12 @@ running** on `:80` / `:443`. Reached over VPN via the ssh alias **`vpn-ora-m`**
 `make deploy` runs `uname -m` on the box and cross-builds for whatever it is,
 so the arch is never hard-coded.
 
-TLS is Caddy's job; the Go binary speaks plain `ws://` on `127.0.0.1:8080`.
-The client (GitHub Pages, `https://www.hmpf.cz/netwars/`) connects to
-`wss://netwars.hmpf.cz/ws` via `#<session>?server_id=netwars.hmpf.cz&mode=coop`.
+TLS is Caddy's job; the Go binary speaks plain `http`/`ws` on `127.0.0.1:8080`.
+The **binary serves the whole game client on `/`** (embedded `web/assets/`, a
+committed copy of the repo-root client refreshed by `make web`) as well as the
+arena on `/ws` — so `https://netwars.hmpf.cz/` is a full standalone deploy, no
+GitHub Pages needed. Co-op URL: `netwars.hmpf.cz/#<session>?mode=coop` (the
+client will default `server_id` to the same origin — M2.5).
 
 ## One-time setup
 

@@ -1,6 +1,7 @@
-// netwars-server — the authoritative co-op arena server (M2).
+// netwars-server — the authoritative co-op arena server (M2). Serves the
+// embedded game client on "/" and the arena WebSocket on "/ws".
 //
-// Plain ws:// on -addr; Caddy terminates TLS in front
+// Plain ws:// / http:// on -addr; Caddy terminates TLS in front
 // (netwars.hmpf.cz { reverse_proxy localhost:8080 }).
 package main
 
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/martinpovolny/netwars/server/game"
+	"github.com/martinpovolny/netwars/server/web"
 )
 
 func main() {
@@ -37,6 +39,8 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, "ok arenas=%d\n", sessions.Count())
 	})
+	// everything else -> the embedded game client ("/" -> index.html)
+	mux.Handle("/", http.FileServer(http.FS(web.FS)))
 
 	srv := &http.Server{
 		Addr:              *addr,
@@ -52,7 +56,7 @@ func main() {
 		_ = srv.Shutdown(sc)
 	}()
 
-	log.Printf("netwars-server listening on %s  (ws /ws, /healthz)  — %d enemy types, %d authored levels",
+	log.Printf("netwars-server listening on %s  (game /, arena /ws, /healthz)  — %d enemy types, %d authored levels",
 		*addr, len(k.Types), len(k.Levels))
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("listen: %v", err)

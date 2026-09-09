@@ -7,7 +7,11 @@
 # speaks plain ws:// on loopback:8080.
 
 netwars.hmpf.cz {
+	# one upstream serves both the embedded game client ("/") and the arena
+	# WebSocket ("/ws"). reverse_proxy upgrades ws transparently.
 	reverse_proxy 127.0.0.1:8080
+
+	encode zstd gzip
 
 	log {
 		output file /var/log/caddy/netwars.log

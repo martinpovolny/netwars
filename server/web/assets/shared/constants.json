@@ -1,0 +1,152 @@
+{
+  "_note": "Single source of truth for all gameplay tuning. Imported by the JS client (shared/constants.js) and embedded into the Go server. Change values here.",
+
+  "player": {
+    "maxHull": 100,
+    "maxMissiles": 16,
+    "radius": 7,
+    "thrustAccel": 240,
+    "brakeAccel": 320,
+    "boostMult": 2.4,
+    "drag": 0.02,
+    "maxSpeed": 620,
+    "turnFactor": 1.9,
+    "rollRate": 2.0,
+    "mouseGain": 0.0042,
+    "intentLag": 8,
+    "mouseRecenter": 0.35,
+    "hitPulseDecay": 3.5,
+    "invulnOnReset": 1.5,
+    "invulnOnRespawn": 2.0,
+    "gunInterval": 0.1,
+    "missileInterval": 0.35,
+    "cannonMuzzle": 1500,
+    "boltTtl": 2.0,
+    "missileMuzzle": 700,
+    "missileLife": 4.5,
+    "gunHardpoint": { "side": 18, "up": -4, "fwd": -10 },
+    "missileHardpoint": { "fwd": 6, "up": -4 }
+  },
+
+  "weapons": {
+    "max": 240,
+    "cannonDmg": 8,
+    "missileDmg": 30,
+    "missileHitPad": 8,
+    "enemyDmgPlayer": 9,
+    "enemyDmgPod": 8,
+    "enemyBoltTtl": 3.2,
+    "enemyBoltSpeed": 950,
+    "enemyBoltInheritVel": 0.4,
+    "enemyBoltMuzzleOffset": 4,
+    "playerHitRadius": 10,
+    "missileSelfPropel": 1.6,
+    "missileMaxSpeed": 1500,
+    "missileGuideDelay": 0.35,
+    "missileGuideRate": 0.01
+  },
+
+  "enemy": {
+    "speedK": 0.19,
+    "turnK": 0.062,
+    "shieldK": 12,
+    "thrustMult": 2.4,
+    "vmaxMult": 2.2,
+    "radiusBase": 10,
+    "radiusPerBulk": 8,
+    "shipScale": 2.0,
+    "maxAlive": 5,
+    "spawnMin": 900,
+    "spawnRange": 500,
+    "aiFireDefaultAimDot": 0.985,
+    "leashSoft": 5000,
+    "leashHard": 6500,
+    "leashSnapDist": 4500,
+    "leashThrustMult": 4,
+    "ramDist": 8,
+    "ramDmg": 26,
+    "ramKnockback": 150,
+    "podStrikeDmg": 20,
+    "podStrikeKnockback": 120
+  },
+
+  "types": {
+    "pirate":    { "name": "Pirate",    "behavior": "brawler", "target": "pods",   "speedFactor": 500,  "turnFactor": 24, "shield": 2, "accent": "#2fe04a", "bulk": 0.9,  "score": 100, "fireRange": 900,  "fireGap": [1.4, 2.4] },
+    "raider":    { "name": "Raider",    "behavior": "thief",   "target": "pods",   "speedFactor": 620,  "turnFactor": 20, "shield": 2, "accent": "#f5b81a", "bulk": 1.05, "score": 120, "fireRange": 700,  "fireGap": [1.8, 3.0] },
+    "fighter":   { "name": "Fighter",   "behavior": "strafer", "target": "pods",   "speedFactor": 700,  "turnFactor": 24, "shield": 2, "accent": "#22d4cc", "bulk": 1.0,  "score": 150, "fireRange": 1100, "fireGap": [1.1, 1.9] },
+    "guardian":  { "name": "Guardian",  "behavior": "sniper",  "target": "player", "shape": "sniper",   "speedFactor": 1100, "turnFactor": 32, "shield": 4, "accent": "#2f7bff", "bulk": 1.2, "score": 250, "fireRange": 1500, "fireGap": [0.45, 0.85] },
+    "commander": { "name": "Commander", "behavior": "charger", "target": "player", "speedFactor": 900,  "turnFactor": 22, "shield": 8, "accent": "#6a5bff", "bulk": 1.6,  "score": 500, "fireRange": 1300, "fireGap": [0.38, 0.65] }
+  },
+
+  "levels": [
+    { "pirate": 3, "raider": 1 },
+    { "pirate": 2, "raider": 2, "fighter": 2 },
+    { "fighter": 3, "raider": 2, "guardian": 1, "commander": 1 },
+    { "pirate": 2, "fighter": 2, "raider": 3, "guardian": 2, "commander": 1 }
+  ],
+  "levelsBeyond": { "fighter": [2, 1], "raider": [1, 0.5], "guardian": [0, 0.5], "commander": [0, 0.3333333333333333] },
+
+  "pods": {
+    "perLevel": 6,
+    "hp": 24,
+    "radius": 28,
+    "spawnMin": 260,
+    "spawnRange": 520,
+    "driftMin": 3,
+    "driftRange": 5,
+    "spinRange": 0.6,
+    "captureExtra": 10,
+    "haulSpeed": 95,
+    "stealDistance": 2600
+  },
+
+  "bonuses": {
+    "radius": 34,
+    "life": 26,
+    "maxAlive": 2,
+    "firstDelayMin": 12,
+    "firstDelayRange": 8,
+    "respawnMin": 22,
+    "respawnRange": 18,
+    "spawnMin": 500,
+    "spawnRange": 700,
+    "driftMin": 4,
+    "driftRange": 8,
+    "missileAmount": 6,
+    "repairAmount": 35,
+    "wantRepairBelow": 0.6,
+    "wantMissilesBelow": 0.4
+  },
+
+  "sim": {
+    "maxDt": 0.05,
+    "flightDrag": 0.1,
+    "brakeAllMult": 3.5
+  },
+
+  "env": {
+    "_note": "3-layer background (client render only). Layer 1: real HYG star catalogue (client/render/stars.json, built by tools/build-stars.mjs) placed by RA/Dec on a sphere that tracks the camera POSITION only — constellations sweep when you turn, never when you fly. Layer 2: near-field motes that streak with your speed. Layer 3: y=0 grid faded out by speed.",
+
+    "starRadius": 20000,
+    "starMagLimit": 6.5,
+    "starBucketMag": [2.5, 4.5],
+    "starBucketSize": [3.4, 2.0, 1.15],
+    "starFaintDim": 0.6,
+
+    "moteCount": 400,
+    "moteField": 800,
+    "moteColorHead": "#aab6d8",
+    "moteColorTail": "#2b3350",
+    "moteOpacity": 0.35,
+    "moteStreakScale": 0.05,
+    "moteStreakMax": 60,
+
+    "gridSize": 16000,
+    "gridDivisions": 64,
+    "gridColorMajor": "#14384a",
+    "gridColorMinor": "#0b2230",
+    "gridSnap": 400,
+    "gridOpacityMax": 0.22,
+    "gridFadeSpeed": 300
+  }
+}

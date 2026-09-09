@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NETWARS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Cpath d='M8 2 L14 14 L2 14 Z' fill='%2335e04a'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    --amber: #ff2b2b;
+    --green: #35e04a;
+    --grid:  #d21f1f;
+    --dim:   #7a1010;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { font-family: "DejaVu Sans Mono", "Courier New", monospace; color: var(--amber); }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* red damage vignette — opacity driven from JS on each hit */
+  #hit-flash {
+    position: fixed; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 34%, rgba(255,18,18,0.9) 100%);
+    transition: opacity 90ms ease-out;
+  }
+
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    text-transform: uppercase; letter-spacing: 1px;
+    text-shadow: 0 0 4px currentColor;
+  }
+
+  /* top centre: horizontal hull bar — only visible when damaged */
+  #hpbar {
+    position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
+    width: 42vw; max-width: 560px; height: 7px;
+    background: rgba(255,255,255,0.10);
+    box-shadow: 0 0 8px rgba(0,0,0,0.6);
+    display: none;
+  }
+  #hpbar .fill {
+    height: 100%; width: 100%;
+    background: var(--green);
+    transition: width 120ms linear, background-color 250ms;
+  }
+  #hpbar.warn .fill { background: #ffb020; }
+  #hpbar.crit .fill { background: #ff2a2a; animation: hpblink 0.5s steps(2) infinite; }
+  @keyframes hpblink { to { opacity: 0.35; } }
+
+  /* top-right: score + missiles */
+  #tr { position: absolute; top: 14px; right: 20px; text-align: right; font-size: 15px; line-height: 1.5; }
+  #tr .v { color: #ff8; }
+
+  /* bottom-left: vertical gauges (Velocity / Shields) */
+  #gauges { position: absolute; left: 20px; bottom: 20px; display: flex; gap: 14px; align-items: flex-end; }
+  .gauge {
+    position: relative; width: 26px; height: 150px;
+    border: 2px solid var(--green); background: rgba(0,0,0,0.35);
+  }
+  .gauge .fill {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 0%;
+    background: var(--amber); opacity: 0.85;
+  }
+  .gauge .lbl { position: absolute; left: 0; right: 0; top: -20px; text-align: center; color: var(--green); font-size: 13px; }
+
+  /* centre heading indicator: a cross with the centre missing */
+  #heading {
+    position: absolute; left: 50%; top: 50%; width: 240px; height: 240px;
+    transform: translate(-50%, -50%);
+  }
+  #heading .cross { stroke: var(--amber); stroke-width: 2.5; stroke-linecap: round; }
+
+  /* deployed intent marker (chases the mouse with lag); ship turns toward it */
+  #intent {
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px;
+    margin: -24px 0 0 -24px; will-change: transform;
+  }
+  #intent line { stroke: #dfe7ef; stroke-width: 2.5; stroke-linecap: round; }
+
+  /* raw mouse cursor: the tiny white rectangle */
+  #mouse {
+    position: absolute; left: 50%; top: 50%; width: 8px; height: 8px;
+    margin: -4px 0 0 -4px; background: #fff; box-shadow: 0 0 4px #fff;
+    will-change: transform;
+  }
+
+  #boost {
+    position: absolute; top: 62px; right: 20px; color: var(--green);
+    font-size: 14px; opacity: 0; border-bottom: 2px solid var(--green); padding-bottom: 2px;
+    transition: opacity 0.15s;
+  }
+  #boost.on { opacity: 1; }
+
+  /* missile-in-flight indicator (top-right, under missiles count) */
+  #msl {
+    position: absolute; top: 82px; right: 20px; font-size: 13px;
+    display: none; letter-spacing: 1px;
+  }
+  #msl.guided   { display: block; color: var(--green); }
+  #msl.ballistic{ display: block; color: #ffb020; }
+
+  /* centre lock ring — the missile seeker box */
+  #lock {
+    position: absolute; left: 50%; top: 50%; width: 200px; height: 200px;
+    transform: translate(-50%, -50%);
+  }
+  #lock .ring { fill: none; stroke: #4c8f6a; stroke-width: 2; stroke-dasharray: 5 9; opacity: 0.45; }
+  #lock.locked .ring {
+    stroke: #ff2f2f; stroke-dasharray: none; opacity: 1;
+    animation: lockpulse 0.45s ease-in-out infinite alternate;
+  }
+  @keyframes lockpulse { to { stroke-width: 3.5; } }
+
+  /* top-centre objectives readout */
+  #obj {
+    position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+    color: var(--amber); font-size: 13px; white-space: nowrap;
+  }
+  #pods {
+    position: absolute; left: 50%; top: 32px; transform: translateX(-50%);
+    color: var(--green); font-size: 14px; white-space: nowrap;
+  }
+  #pods.crit { color: var(--amber); animation: podblink 0.6s steps(2) infinite; }
+  @keyframes podblink { to { opacity: 0.35; } }
+
+  /* centre message */
+  #msg {
+    position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+    color: var(--green); font-size: 26px; opacity: 0; transition: opacity 0.25s;
+  }
+  /* non-blocking banner so you can watch the fight while dead */
+  #dead {
+    position: absolute; left: 50%; top: 8%; transform: translateX(-50%);
+    display: none; text-align: center; color: var(--amber); font-size: 30px;
+    letter-spacing: 3px; padding: 14px 40px;
+    background: rgba(4, 2, 10, 0.55); border: 1px solid var(--amber);
+    box-shadow: 0 0 40px rgba(255, 43, 43, 0.22);
+  }
+  #dead .sub { display: block; margin-top: 10px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
+  #dead .key { display: block; margin-top: 4px; font-size: 14px; color: var(--green); letter-spacing: 1px; }
+
+  /* inset labels (viewports themselves are drawn by WebGL) */
+  #axis-label  { position: absolute; left: 20px;  top: 156px; color: var(--green); font-size: 12px; white-space: nowrap; }
+  #radar-label { position: absolute; right: 20px; bottom: 196px; color: var(--grid); font-size: 12px; white-space: nowrap; }
+
+  #help {
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    color: #ff8; font-size: 11px; opacity: 0.9; text-align: center;
+    max-width: 94vw; line-height: 1.7;
+  }
+  #help.hidden { display: none; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="hit-flash"></div>
+
+<div id="hud">
+  <div id="hpbar"><div class="fill" id="hpbar-fill"></div></div>
+
+  <div id="tr">
+    <div>Score: <span class="v" id="score">000000</span></div>
+    <div>Missiles: <span class="v" id="missiles">20</span></div>
+  </div>
+
+  <div id="gauges">
+    <div class="gauge"><div class="fill" id="vel-fill"></div><span class="lbl">V</span></div>
+    <div class="gauge"><div class="fill" id="shd-fill"></div><span class="lbl">S</span></div>
+  </div>
+
+  <!-- missile seeker / lock ring at screen centre -->
+  <svg id="lock" viewBox="-100 -100 200 200">
+    <circle class="ring" cx="0" cy="0" r="64" />
+  </svg>
+
+  <!-- heading indicator: a cross with the centre missing (nose direction) -->
+  <svg id="heading" viewBox="-120 -120 240 240">
+    <g class="cross">
+      <line x1="0" y1="-30" x2="0" y2="-11" />
+      <line x1="0" y1="30" x2="0" y2="11" />
+      <line x1="-30" y1="0" x2="-11" y2="0" />
+      <line x1="30" y1="0" x2="11" y2="0" />
+    </g>
+  </svg>
+
+  <!-- deployed intent marker: a 45deg cross (X), centre missing -->
+  <svg id="intent" viewBox="-24 -24 48 48">
+    <line x1="-22" y1="-22" x2="-8" y2="-8" />
+    <line x1="22" y1="-22" x2="8" y2="-8" />
+    <line x1="-22" y1="22" x2="-8" y2="8" />
+    <line x1="22" y1="22" x2="8" y2="8" />
+  </svg>
+
+  <div id="mouse"></div>
+  <div id="boost">Extra Thrust</div>
+  <div id="msl">Msl ▸ Ballistic</div>
+
+  <div id="obj">Level 1</div>
+  <div id="pods">Pods 6/6</div>
+  <div id="msg"></div>
+  <div id="dead">Ship Destroyed
+    <span class="sub" id="dead-sub"></span>
+    <span class="key">watching the battle · press any key to relaunch</span>
+  </div>
+
+  <div id="axis-label">Orientation</div>
+  <div id="radar-label">Scanner</div>
+
+  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space cannon &nbsp;·&nbsp; F / RMB missile &nbsp;·&nbsp; [ / ] scan zoom &nbsp;·&nbsp; H help</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.169.0/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="./client/main.js"></script>
+</body>
+</html>
