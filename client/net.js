@@ -120,18 +120,30 @@ function runOnline({ ws, welcome }, { mode }) {
   bonuses.attach(world.bonuses);
   weapons.attach(world.projectiles);
 
-  // other players' ships — a simple diff-rendered mesh per remote ship
+  // other players' ships — a diff-rendered mesh + a radar-facing {position}
+  // record per remote ship
   const otherMeshes = [];
   function syncOthers(list) {
     for (let i = 0; i < list.length; i++) {
       if (!otherMeshes[i]) { const m = makeDart(0x35e0d0, 1); scene.add(m); otherMeshes[i] = m; }
+      if (!world.others[i]) world.others[i] = { position: new THREE.Vector3(), alive: true };
       const o = list[i], m = otherMeshes[i];
       m.visible = o.alive;
       m.position.set(o.p[0], o.p[1], o.p[2]);
       m.quaternion.set(o.q[0], o.q[1], o.q[2], o.q[3]);
+      world.others[i].position.set(o.p[0], o.p[1], o.p[2]);
+      world.others[i].alive = o.alive;
     }
-    for (let i = list.length; i < otherMeshes.length; i++) { scene.remove(otherMeshes[i]); }
+    for (let i = list.length; i < otherMeshes.length; i++) scene.remove(otherMeshes[i]);
     otherMeshes.length = list.length;
+    world.others.length = list.length;
+
+    // player-count banner
+    const players = list.length + 1;
+    if (players !== world._players) {
+      world._players = players;
+      hud.flash(players > 1 ? `${players} PLAYERS IN ARENA` : 'WAITING FOR PLAYERS…', 2.2);
+    }
   }
 
   // the local ship spawns/fires only on the server — a no-op weapons proxy so
@@ -341,7 +353,7 @@ function runOnline({ ws, welcome }, { mode }) {
     bonuses.update(dt);
     weapons.update(dt);
     explosions.update(dt);
-    radar.update(player, enemies, pods, bonuses);
+    radar.update(player, enemies, pods, bonuses, world.others);
     orient.update(player);
 
     if (wasAlive && !player.alive) {
