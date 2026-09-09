@@ -5,9 +5,10 @@ they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
 **Status:** M0 + M1 merged & deployed to `www.hmpf.cz/netwars/`. Follow-ups
 also in: mote polish, real HYG star catalogue, leading enemy fire.
-**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1 + M2.2 done
-(stepWorld consolidation parity-verified; golden vector + Go skeleton, RNG
-twin passes). M2.3 next — port `shared/sim` → Go, green the golden test.**
+**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1–M2.3 done:
+`stepWorld` consolidated + parity-verified; full `shared/sim` ported to Go,
+`TestGoldenParity` green (600 frames, 1e-4). M2.4 next — WebSocket transport
++ arena loop (`coder/websocket`).**
 
 ---
 
@@ -146,10 +147,16 @@ manual one-off; not part of build or CI.)
       skipped until M2.3), `cmd/netwars-server/main.go` (flags, embedded
       constants, SIGINT/TERM). `go vet && go build && go test ./...` green.
       No `coder/websocket` dep yet (M2.4). SP path untouched.
-- [ ] **M2.3** Port `shared/sim` → Go function-for-function: `flight.go`,
-      `ai.go`, `weapons.go`, `rules.go`, `world.go`. `golden_test.go` runs
-      the Go `stepWorld` on the same seed and asserts each tick matches the
-      committed `golden.json` within 1e-4. No client impact, no Node.
+- [x] **M2.3** *(m2-world: a6d03d8)* Ported `shared/sim` → Go: `vec.go`
+      (Vec3/Quat, faithful THREE ops), `rng.go` (+`RandomDir`), `rules.go`,
+      `ai.go` (5 behaviours), `weapons.go` (`Projectiles.Step`),
+      `enemies.go` (fleet + ordered goals + checkRam/checkPodStrikes),
+      `world.go` (`StepWorld`). `constants.go` ordered-decodes `levels` /
+      `levelsBeyond` (key order drives spawn pick). **`TestGoldenParity`
+      replays seed "golden" through the Go `StepWorld` (same scripted ship +
+      cannon cadence) and matches all 600 frames within 1e-4 — score, level,
+      FSM, ship, every enemy / pod / bonus / live projectile. PASSES.**
+      `go vet && go build && go test ./...` green. No client impact, no Node.
 - [ ] **M2.4** Transport + arena: `ws/conn.go` (coder/websocket, read/write
       pumps, JSON frames), `proto/` (`hello`/`input`/`ping` ↔
       `welcome`/`snapshot`/`event`/`pong`), `game/session.go` (session_id →
