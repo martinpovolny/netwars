@@ -1,46 +1,37 @@
-import * as THREE from 'three';
 import { makePod } from './ships.js';
-import { K } from '../shared/constants.js';
-import { spawnPods, stepPods, recentrePods } from '../shared/sim/rules.js';
 
-// Render side of the pods: the sim state lives in shared/sim/rules.js; this
-// wraps it and keeps a THREE mesh per pod (position + visual tumble).
+// Render side of the pods. The sim (spawn, drift, capture, cull, recentre) is
+// in shared/sim/rules.js and driven by shared/sim/world.js#stepWorld. This
+// diffs `pods.list` against a mesh-per-pod Map and applies the visual tumble.
 export class Pods {
   constructor(scene) {
     this.scene = scene;
-    this._sim = { list: [], centroid: new THREE.Vector3(), lost: 0, total: 0 };
-    this._meshes = new Map();   // podState -> THREE.Group
+    this._sim = null;                 // world.pods — set by attach()
+    this._meshes = new Map();         // podState -> THREE.Group
   }
 
-  get list() { return this._sim.list; }
+  attach(pods) { this._sim = pods; }
+
+  get list() { return this._sim ? this._sim.list : []; }
   get centroid() { return this._sim.centroid; }
-  get total() { return this._sim.total; }
-  get alive() { return this._sim.list.length; }
-
-  spawnLevel(count, around = new THREE.Vector3()) {
-    this.clear();
-    this._sim.list = spawnPods(count, around, K.pods);
-    this._sim.total = count;
-    this._sim.lost = 0;
-    for (const p of this._sim.list) this._attach(p);
-    recentrePods(this._sim);
-  }
-
-  _attach(p) {
-    const m = makePod();
-    m.position.copy(p.position);
-    this.scene.add(m);
-    this._meshes.set(p, m);
-  }
+  get total() { return this._sim ? this._sim.total : 0; }
+  get alive() { return this._sim ? this._sim.list.length : 0; }
 
   update(dt) {
-    stepPods(this._sim, dt);
-    // drop meshes for culled pods
-    for (const [p, m] of this._meshes) {
-      if (!this._sim.list.includes(p)) { this.scene.remove(m); this._meshes.delete(p); }
+    const live = this._sim ? this._sim.list : [];
+    const liveSet = new Set(live);
+
+    for (const p of live) {
+      if (this._meshes.has(p)) continue;
+      const m = makePod();
+      m.position.copy(p.position);
+      this.scene.add(m);
+      this._meshes.set(p, m);
     }
-    // sync survivors
-    for (const p of this._sim.list) {
+    for (const [p, m] of this._meshes) {
+      if (!liveSet.has(p)) { this.scene.remove(m); this._meshes.delete(p); }
+    }
+    for (const p of live) {
       const m = this._meshes.get(p);
       if (!m) continue;
       m.position.copy(p.position);
@@ -53,6 +44,5 @@ export class Pods {
   clear() {
     for (const m of this._meshes.values()) this.scene.remove(m);
     this._meshes.clear();
-    this._sim.list = [];
   }
 }

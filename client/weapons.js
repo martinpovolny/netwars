@@ -81,26 +81,17 @@ export class Weapons {
     this._dir = new THREE.Vector3();
   }
 
+  // The shared projectile pool is owned by world.js now; point at it.
+  attach(projectiles) { this.p = projectiles; }
+
   // pass-throughs to the shared pool
   spawn(pos, vel, team, ttl, target = null, kind = 'bolt') { this.p.spawn(pos, vel, team, ttl, target, kind); }
   playerMissileActive() { return this.p.playerMissileActive(); }
   playerMissileGuided() { return this.p.playerMissileGuided(); }
 
-  update(dt, player, enemies, pods, explosions, audio, onKill, bonuses) {
-    // 1. step the shared sim -> events
-    const events = this.p.step(dt, { player, enemies, pods, bonuses }, K);
-    for (const ev of events) {
-      switch (ev.kind) {
-        case 'enemyHit': explosions.hit(ev.pos, ev.isMissile ? 0xffd23a : 0xbfe8ff); break;
-        case 'enemyKill': explosions.blast(ev.pos, ev.accent); audio?.boom(); break;
-        case 'missileBurst': explosions.blast(ev.pos, 0xffd23a); break;
-        case 'playerHit': explosions.spark(ev.pos); if (!ev.absorbed) audio?.hit(); break;
-        case 'podHit': explosions.spark(ev.pos); break;
-        case 'podKill': explosions.blast(ev.pos, 0xff5ad0); audio?.boom(); onKill?.('podlost', ev.pod); break;
-      }
-    }
-
-    // 2. drive the meshes from the (now-updated) pool
+  // Render-only: stepWorld() already stepped the pool and surfaced the hit
+  // events; this just drives the bolt / missile / trail meshes from it.
+  update(dt) {
     const p = this.p;
     const tp = this.tpos;
     const tc = this.tcol;

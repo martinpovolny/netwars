@@ -11,8 +11,9 @@ import { Environment } from './render/environment.js';
 import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
-import { PODS_PER_LEVEL } from './levels.js';
-import { makeLevelFSM, stepLevelFSM } from '../shared/sim/rules.js';
+import { PODS_PER_LEVEL, ENEMY_TYPES, goalsForLevel } from './levels.js';
+import K from '../shared/constants.js';
+import { makeWorld, startWorldLevel, stepWorld } from '../shared/sim/world.js';
 
 const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -46,13 +47,18 @@ const radar = new Radar();
 const orient = new OrientationInset();
 const hud = new HUD();
 
-let score = 0;
-const fsm = makeLevelFSM();   // { state:'playing'|'won'|'lost', timer }
+// the shared, authoritative world — the same code the Go server runs. SP owns
+// the ship locally (player.update / stepShip) and hands the rest to stepWorld.
+const world = makeWorld({ K, rng: Math.random, ENEMY_TYPES, goalsForLevel, ship: player });
+world.fx = audio;                 // client-only: the enemy-laser cue
+weapons.attach(world.projectiles);
+enemies.attach(world.fleet);
+pods.attach(world.pods);
+bonuses.attach(world.bonuses);
+
 let deadAt = 0;          // performance.now() when the player was destroyed
 
-enemies.onKill = (e) => { score += e.stats.score; };
-
-window.__nw = { scene, camera, player, enemies, pods, bonuses, weapons, explosions, environment, radar, input, audio, hud, paused: false, get score() { return score; }, get state() { return fsm.state; } };
+window.__nw = { scene, camera, player, world, enemies, pods, bonuses, weapons, explosions, environment, radar, input, audio, hud, paused: false, get score() { return world.score; }, get state() { return world.fsm.state; } };
 
 canvas.addEventListener('mousedown', () => { audio.resume(); hud.hideHelp(); }, { once: true });
 
@@ -69,11 +75,8 @@ window.addEventListener('keydown', (e) => {
 });
 
 function startLevel(n) {
-  enemies.startLevel(n);
-  pods.spawnLevel(PODS_PER_LEVEL, player.position);
-  bonuses.reset();
+  startWorldLevel(world, n, PODS_PER_LEVEL);
   player.reset();
-  fsm.state = 'playing';
   hud.flash('LEVEL ' + n, 2.2);
 }
 
@@ -87,9 +90,37 @@ function onResize() {
 window.addEventListener('resize', onResize);
 onResize();
 
-const onWeaponEvent = (kind) => {
-  if (kind === 'podlost') hud.flash('POD DOWN', 1.0);
-};
+// stepWorld() hands back a flat events[] each tick; this is the client's
+// reaction — explosions, sound, HUD flashes, level (re)starts. (Scoring is
+// done inside stepWorld.)
+function handleWorldEvent(ev) {
+  switch (ev.kind) {
+    case 'bonusPicked':
+      if (ev.bonus === 'missiles') { player.giveMissiles(6); hud.flash('+6 MISSILES', 1.4); }
+      else { player.repair(35); hud.flash('+35 HULL', 1.4); }
+      explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : 0x3ad0ff);
+      audio.pickup();
+      break;
+    case 'ram':
+      explosions.blast(ev.pos, 0xffcc55);
+      audio.boom();
+      if (ev.hurt) audio.hit();
+      hud.flash('COLLISION', 1.2);
+      break;
+    case 'podStrikeKill':
+      explosions.blast(ev.pos, 0xff5ad0);
+      audio.boom();
+      break;
+    case 'enemyHit': explosions.hit(ev.pos, ev.isMissile ? 0xffd23a : 0xbfe8ff); break;
+    case 'enemyKill': explosions.blast(ev.pos, ev.accent); audio?.boom(); break;
+    case 'missileBurst': explosions.blast(ev.pos, 0xffd23a); break;
+    case 'playerHit': explosions.spark(ev.pos); if (!ev.absorbed) audio?.hit(); break;
+    case 'podHit': explosions.spark(ev.pos); break;
+    case 'podKill': explosions.blast(ev.pos, 0xff5ad0); audio?.boom(); hud.flash('POD DOWN', 1.0); break;
+    // 'level' is handled by the frame loop (after the render pass) so a level
+    // transition swaps state on exactly the same frame as the old code.
+  }
+}
 
 // spectator camera state (while the player is dead the world keeps running)
 const UP = new THREE.Vector3(0, 1, 0);
@@ -135,21 +166,22 @@ function frame(now) {
   // only a manual debug pause freezes it
   const simDt = window.__nw.paused ? 0 : dt;
 
+  // client-predicted own ship
   player.update(dt, input, weapons, enemies, audio);
-  enemies.update(simDt, player, pods, weapons, audio);
+
+  // one authoritative tick over enemies / pods / bonuses / projectiles /
+  // collisions / level FSM (the same stepWorld the Go server runs)
+  let levelAction = null;
+  for (const ev of stepWorld(world, simDt)) {
+    if (ev.kind === 'level') levelAction = ev.action;
+    else handleWorldEvent(ev);
+  }
+
+  // render passes: sync meshes from the world state stepWorld just produced
+  enemies.update(simDt);
   pods.update(simDt);
-  const got = bonuses.update(simDt, player, pods.alive ? pods.centroid : player.position);
-  if (got) {
-    if (got.kind === 'missiles') { player.giveMissiles(6); hud.flash('+6 MISSILES', 1.4); }
-    else { player.repair(35); hud.flash('+35 HULL', 1.4); }
-    explosions.hit(player.position, got.kind === 'repair' ? 0x2fe06a : 0x3ad0ff);
-    audio.pickup();
-  }
-  if (simDt > 0) {
-    if (enemies.checkRam(player, explosions, audio)) hud.flash('COLLISION', 1.2);
-    enemies.checkPodStrikes(pods, explosions, audio);
-  }
-  weapons.update(simDt, player, enemies, pods, explosions, audio, onWeaponEvent, bonuses);
+  bonuses.update(simDt);
+  weapons.update(simDt);
   explosions.update(simDt);
   radar.update(player, enemies, pods, bonuses);
   orient.update(player);
@@ -162,15 +194,11 @@ function frame(now) {
     hud.flash('', 0);
   }
 
-  // --- level win / lose (shared FSM; paused while the player is dead) ---
-  const action = stepLevelFSM(
-    fsm,
-    { podsAlive: pods.alive, enemiesCleared: enemies.cleared(), level: enemies.level },
-    (simDt > 0 && player.alive) ? simDt : 0,
-  );
-  if (action) {
-    if (action.flash) hud.flash(action.flash, action.hold);
-    if (action.startLevel) startLevel(action.startLevel);
+  // level (re)start happens here — after the render pass — so the transition
+  // lands on the same frame as the pre-stepWorld code
+  if (levelAction) {
+    if (levelAction.flash) hud.flash(levelAction.flash, levelAction.hold);
+    if (levelAction.startLevel) startLevel(levelAction.startLevel);
   }
 
   // camera: first-person while alive; a fixed wreck-cam that pans to the
@@ -219,7 +247,7 @@ function frame(now) {
   player.lockTarget = lockTarget;
 
   hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
-  hud.update(dt, player, enemies, pods, score, radar, {
+  hud.update(dt, player, enemies, pods, world.score, radar, {
     locked: !!lockTarget,
     missileActive: weapons.playerMissileActive(),
     missileGuided: weapons.playerMissileGuided(),
