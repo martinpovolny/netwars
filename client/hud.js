@@ -11,6 +11,7 @@ export class HUD {
     this.help = document.getElementById('help');
     this.obj = document.getElementById('obj');
     this.podsEl = document.getElementById('pods');
+    this.net = document.getElementById('net');
     this.intent = document.getElementById('intent');
     this.mouse = document.getElementById('mouse');
     this.boost = document.getElementById('boost');
@@ -96,6 +97,8 @@ export class HUD {
     if (radar && this.radarLabel) {
       this.radarLabel.textContent = `Scanner  Z${radar.zoomLevel}/${radar.maxZoom} · ${radar.range}`;
     }
+
+    if (this.net) this.net.textContent = lock && lock.rtt ? `RTT ${Math.round(lock.rtt)} ms` : '';
 
     if (this.podsEl) {
       this.podsEl.textContent = `Pods ${pods.alive}/${pods.total}`;

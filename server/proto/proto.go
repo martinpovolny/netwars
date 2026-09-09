@@ -126,9 +126,10 @@ type Snapshot struct {
 	Type     string   `json:"type"`
 	Tick     int      `json:"tick"`
 	AckSeq   int      `json:"ackSeq"`
-	Level    int      `json:"level"`
-	Score    int      `json:"score"`
-	FSMState string   `json:"fsm"`
+	Level    int            `json:"level"`
+	Goals    map[string]int `json:"goals,omitempty"` // enemies still owed this level, per type
+	Score    int            `json:"score"`
+	FSMState string         `json:"fsm"`
 	Ship     ShipS    `json:"ship"`
 	Others   []ShipS  `json:"others"`
 	Enemies  []EnemyS `json:"enemies"`

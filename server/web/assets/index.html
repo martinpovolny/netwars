@@ -128,6 +128,9 @@
   #pods.crit { color: var(--amber); animation: podblink 0.6s steps(2) infinite; }
   @keyframes podblink { to { opacity: 0.35; } }
 
+  /* online-only: round-trip time to the server */
+  #net { position: absolute; left: 14px; top: 12px; color: var(--green); opacity: 0.55; font-size: 12px; }
+
   /* centre message */
   #msg {
     position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
@@ -201,6 +204,7 @@
 
   <div id="obj">Level 1</div>
   <div id="pods">Pods 6/6</div>
+  <div id="net"></div>
   <div id="msg"></div>
   <div id="dead">Ship Destroyed
     <span class="sub" id="dead-sub"></span>

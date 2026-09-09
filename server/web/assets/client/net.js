@@ -200,13 +200,14 @@ function runOnline({ ws, welcome }, { mode }) {
 
   // ---- socket ----------------------------------------------------
   let ackSeq = 0;
+  let rtt = 0, lastPing = 0;
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
     switch (msg.type) {
       case 'snapshot': ackSeq = msg.ackSeq | 0; applySnapshot(msg, false); break;
       case 'event': for (const e of msg.events || []) handleEvent(e); break;
-      case 'pong': /* RTT handling — M2.5b */ break;
+      case 'pong': rtt = rtt ? rtt * 0.7 + (performance.now() - (msg.t || 0)) * 0.3 : performance.now() - (msg.t || 0); break;
     }
   };
   ws.onclose = () => { hud.flash('DISCONNECTED', 5); console.warn('[netwars] socket closed'); };
@@ -297,6 +298,7 @@ function runOnline({ ws, welcome }, { mode }) {
   const camErr = new THREE.Vector3();
   function applySnapshot(s, first) {
     world.fleet.level = s.level;
+    world.fleet.goals = s.goals || {};
     world.score = s.score;
     world.fsm.state = s.fsm;
 
@@ -441,6 +443,10 @@ function runOnline({ ws, welcome }, { mode }) {
     // predict own ship (movement only; fire is server-side)
     player.update(dt, input, predictWeapons, enemies, audio);
     sendInput(dt);
+    if (now - lastPing > 1000 && ws.readyState === WebSocket.OPEN) {
+      lastPing = now;
+      ws.send(JSON.stringify({ type: 'ping', t: now }));
+    }
 
     // advance projectile ages locally so the enemy-bolt strobe animates
     const pr = world.projectiles;
@@ -503,6 +509,7 @@ function runOnline({ ws, welcome }, { mode }) {
       locked: !!lockTarget,
       missileActive: weapons.playerMissileActive(),
       missileGuided: weapons.playerMissileGuided(),
+      rtt,
     });
   }
   requestAnimationFrame(frame);

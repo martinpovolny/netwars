@@ -8,11 +8,21 @@ func pq(q Quat) proto.Quat { return proto.Quat{q.X, q.Y, q.Z, q.W} }
 // BuildSnapshot serialises the shared world for one player. `self` is that
 // player's ship (reconcile target); `others` are the rest (interpolate).
 func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Ship) proto.Snapshot {
+	var goals map[string]int
+	for _, g := range w.Fleet.Goals {
+		if g.N > 0 {
+			if goals == nil {
+				goals = map[string]int{}
+			}
+			goals[g.Type] = g.N
+		}
+	}
 	s := proto.Snapshot{
 		Type:     proto.TypeSnapshot,
 		Tick:     tick,
 		AckSeq:   ackSeq,
 		Level:    w.Fleet.Level,
+		Goals:    goals,
 		Score:    w.Score,
 		FSMState: w.FSM.State,
 		Ship: proto.ShipS{
