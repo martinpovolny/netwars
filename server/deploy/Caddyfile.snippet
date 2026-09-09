@@ -1,0 +1,15 @@
+# Append to the existing Caddyfile (Caddy already owns :80 / :443 on the box),
+# then:  sudo systemctl reload caddy   (or: caddy reload --config /etc/caddy/Caddyfile)
+#
+# Caddy auto-provisions + renews the Let's Encrypt cert for netwars.hmpf.cz.
+# Modern `reverse_proxy` upgrades WebSocket connections transparently and
+# streams them with no idle timeout — nothing special needed. The Go server
+# speaks plain ws:// on loopback:8080.
+
+netwars.hmpf.cz {
+	reverse_proxy 127.0.0.1:8080
+
+	log {
+		output file /var/log/caddy/netwars.log
+	}
+}
