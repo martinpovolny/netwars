@@ -5,7 +5,9 @@ they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
 **Status:** M0 + M1 merged & deployed to `www.hmpf.cz/netwars/`. Follow-ups
 also in: mote polish, real HYG star catalogue, leading enemy fire.
-**M2 (Go server, co-op) in progress — `m2-world` branch, slice M2.1.**
+**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1 done
+(rng threading + `stepWorld` consolidation, parity-verified); M2.2 next
+(golden.html + Go skeleton).**
 
 ---
 
@@ -114,19 +116,24 @@ changes on purpose — that's also when the Go port must be re-synced, which
 the now-failing Go test flags. (`tools/build-stars.mjs` stays a rare
 manual one-off; not part of build or CI.)
 
-- [ ] **M2.1** `shared/sim/world.js` — pure `makeWorld()` + `stepWorld(world,
-      control, dt)` that runs one shared tick: `stepShip` (own ship) →
-      `stepEnemy` ×N → `stepPods` → `stepBonuses` → `Projectiles.step` →
-      ram / pod-strike → `stepLevelFSM`, returning an `events[]` list
-      (`bonusPicked`, `collision`, `podDown`, `levelFlash`, `startLevel`, …).
-      Move `checkRam` / `checkPodStrikes` out of `client/enemies.js` into
-      `shared/sim` as event-returning pure fns (server must own that damage).
-      `sp.js` swaps its ~15-line orchestration block for one `stepWorld` call
-      + an event switch driving `hud`/`explosions`/`audio` (client-only).
-      **Parity-verified** vs. current SP *in the browser* (old modules via
-      `git show origin/main:…` vs new, seeded rng, 600 ticks of varied
-      control, pos/vel/quat/hp/score/level deltas 0) — same method as every
-      M0 slice. No new deps, no Node.
+- [x] **M2.1** shared world tick. *(m2-world: 5e4fb6f, fb63ae4)*
+      - **M2.1a** threaded `rng` through `rules.js` (spawnPods/makeBonuses/
+        stepBonuses) + `ai.js` (`ctx.rng`), default `Math.random`;
+        `randomDir` mirrors THREE.randomDirection draw-for-draw. Parity vs
+        origin/main: spawnPods / stepBonuses×1200 / stepEnemy×400 all Δ 0.
+      - **M2.1b** `shared/sim/enemies.js` (pure fleet: makeEnemyState,
+        makeFleet/startFleetLevel/stepFleet, checkRam/checkPodStrikes) +
+        `shared/sim/world.js` (`makeWorld` / `startWorldLevel` /
+        `stepWorld(world, dt) → events[]`, order = fleet → pods → bonuses →
+        ram → pod-strike → projectiles → FSM; `world.fx` optional client
+        side-channel). `client/enemies|pods|bonuses|weapons.js` → pure
+        diff-render wrappers (`attach()` + mesh sync only). `sp.js` swaps
+        its sim+FSM block for one `stepWorld` call + `handleWorldEvent`;
+        ship stays client-predicted (`player.update`/`stepShip`).
+        **Parity:** headless A/B (old sp.js orchestration vs stepWorld,
+        seeded LCG, 9000 ticks / 150 s incl. a level-lost restart) →
+        WORST Δ 0. Browser: 60 fps, 0 errors, restart + mesh diff-render
+        (6/6 pods, 4/4 enemies) clean.
 - [ ] **M2.2** `tools/golden.html` — a dev page: imports `shared/sim`, runs
       `stepWorld` 600 ticks off `makeRng('golden')`, serialises the world
       each tick, hands over `golden.json` to save into
