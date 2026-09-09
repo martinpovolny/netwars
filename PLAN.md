@@ -5,10 +5,11 @@ they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
 **Status:** M0 + M1 merged & deployed to `www.hmpf.cz/netwars/`. Follow-ups
 also in: mote polish, real HYG star catalogue, leading enemy fire.
-**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1–M2.4 done:
-`stepWorld` consolidated + parity-verified; `shared/sim` ported to Go (golden
-parity green); WebSocket transport + arena loop live (`TestArenaEndToEnd`
-green). M2.5 next — real `client/net.js`.**
+**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1–M2.4 + M2.7
+done: `stepWorld` consolidated + parity-verified; `shared/sim` ported to Go
+(golden parity green); ws transport + arena loop **deployed live** at
+`netwars.hmpf.cz` (binary serves the game on `/` too). M2.5 next — real
+`client/net.js`. M2.6 — N-ship authority. M2.8 — 2-player co-op test.**
 
 ---
 
@@ -180,14 +181,18 @@ manual one-off; not part of build or CI.)
       integrates each from its inputs and owns all shared state; clients
       predict own + interpolate others; ≥ 2 humans share one pod defence,
       both scores count, one can die/respawn while the other plays on.
-- [~] **M2.7** Deploy tooling in *(m2-world: dfb8f5b)* — `server/Makefile`
-      (`build-arm64`, `install-unit`, `deploy`, `logs`, `healthz`; ssh alias
-      `vpn-ora-m`), `deploy/netwars-server.service` (hardened, loopback:8080),
-      `deploy/Caddyfile.snippet` (`netwars.hmpf.cz` → `127.0.0.1:8080`),
-      `deploy/README.md`. Box = ARM64 Oracle Cloud, static IP, Caddy on
-      80/443. **Still to do by hand:** DNS `A` record for `netwars.hmpf.cz`,
-      OCI ingress + OS firewall for 80/443, then `make install-unit && make
-      deploy && <append snippet> && make reload-caddy && make healthz`.
+- [x] **M2.7** Deployed & live *(m2-world: …bde1050)*. `server/Makefile`
+      (`web`, `build-remote` — auto-detects box arch via `uname -m`,
+      `install-unit`, `deploy`, `logs`, `healthz`; ssh alias `vpn-ora-m`),
+      hardened systemd unit (binary at `/usr/local/bin`, loopback:8080,
+      `install -m 0755`), `Caddyfile.snippet` (`netwars.hmpf.cz` →
+      `127.0.0.1:8080`, `encode zstd gzip`), `deploy/README.md`. Box = **x86-64**
+      Oracle Cloud, static IP, Caddy on 80/443. **The binary also serves the
+      whole game client on `/`** (`server/web/` — `//go:embed all:assets`, a
+      committed copy of `index.html` + `client/` + `shared/` kept fresh by
+      `make web`); `https://netwars.hmpf.cz/` is a standalone deploy, no
+      GitHub Pages needed. Verified live: `wss://netwars.hmpf.cz/ws` → 101 →
+      `welcome` + streaming snapshots with the AI fleet moving server-side.
 - [ ] **M2.8 Verify**: `go test ./...` (golden-vector) green in CI; two local
       browser profiles co-op on `netwars.localhost` (Caddy internal CA); real
       2-person internet co-op with an RTT/jitter overlay. If a JS-only
