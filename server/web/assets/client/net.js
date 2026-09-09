@@ -275,6 +275,7 @@ function runOnline({ ws, welcome }, { mode }) {
 
   // ---- snapshot -> world ------------------------------------
   const _v = new THREE.Vector3();
+  const _sq = new THREE.Quaternion();
   // reconcile smoothing: each snapshot moves player.position straight to the
   // authoritative value, but the leftover jump is parked in camErr and eased
   // out over a few frames so the *view* doesn't judder at the snapshot rate.
@@ -305,9 +306,11 @@ function runOnline({ ws, welcome }, { mode }) {
       } else {
         // carry (oldPos - authoritative) into camErr, then move the ship to
         // authoritative: camera = player.position + camErr stays continuous.
+        // keep the cap small — camErr offsets the *view* from where the
+        // server spawns our bolts, so a big one makes the muzzle point drift.
         camErr.add(player.position).sub(_v);
         const m = camErr.length();
-        if (m > 50) camErr.multiplyScalar(50 / m);   // cap so one bad frame can't fling the view
+        if (m > 18) camErr.multiplyScalar(18 / m);
         player.position.copy(_v);
         // keep velocity purely predicted while the gap is small — writing a
         // ~1-RTT-stale server velocity every snapshot kinks the integrated
@@ -315,6 +318,11 @@ function runOnline({ ws, welcome }, { mode }) {
         // to mean an unpredicted event (hit / knockback / hard turn).
         if (err > 12) player.velocity.lerp(_v.set(sh.v[0], sh.v[1], sh.v[2]), 0.5);
       }
+      // orientation is otherwise 100% predicted and drifts unbounded from the
+      // server — which swings the wing hardpoints the server fires bolts from,
+      // so our shots seem to start from a wandering point. Ease it back.
+      _sq.set(sh.q[0], sh.q[1], sh.q[2], sh.q[3]);
+      if (player.quaternion.angleTo(_sq) > 0.001) player.quaternion.slerp(_sq, 0.12);
     }
 
     syncOthers(s.others || []);
@@ -445,7 +453,7 @@ function runOnline({ ws, welcome }, { mode }) {
     wasAlive = player.alive;
 
     if (player.alive) {
-      camErr.multiplyScalar(Math.exp(-dt / 0.09));   // ~90 ms time constant
+      camErr.multiplyScalar(Math.exp(-dt / 0.05));   // ~50 ms — clear the offset fast
       if (camErr.lengthSq() < 1e-6) camErr.set(0, 0, 0);
       camera.position.copy(player.position).add(camErr);
       camera.quaternion.copy(player.quaternion);
