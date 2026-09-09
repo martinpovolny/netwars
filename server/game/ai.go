@@ -7,6 +7,10 @@ import "math"
 
 const enemyBoltSpeed = 950.0
 
+// fraction of the shooter's own velocity a bolt carries at spawn — the aim
+// solve compensates for it (twin of shared/sim/ai.js BOLT_INHERIT).
+const boltInherit = 0.4
+
 var fwd = Vec3{0, 0, -1}
 var up = Vec3{0, 1, 0}
 
@@ -162,20 +166,36 @@ func tryFire(e *Enemy, dt float64, targetPos Vec3, w *World, aimDot float64, tar
 	if e.FireCd > 0 {
 		return
 	}
-	d := targetPos
-	d.Sub(e.Position)
-	if d.Length() > e.Stats.FireRange {
+	d0 := targetPos
+	d0.Sub(e.Position)
+	if d0.Length() > e.Stats.FireRange {
 		return
 	}
 
-	aimAt := targetPos
+	// bolt = enemyBoltSpeed*dir + boltInherit*e.Velocity; solve the intercept
+	// for the target velocity relative to that inherited drift, then aim the
+	// 950-unit part along the residual (twin of shared/sim/ai.js tryFire).
+	var rv Vec3
 	if targetVel != nil {
-		var lead Vec3
-		leadPoint(e.Position, targetPos, *targetVel, &lead)
-		aimAt = lead
+		rv = *targetVel
 	}
-	d = aimAt
-	d.Sub(e.Position)
+	rv.AddScaledVector(e.Velocity, -boltInherit)
+	a := rv.LengthSq() - enemyBoltSpeed*enemyBoltSpeed
+	b := 2 * (d0.X*rv.X + d0.Y*rv.Y + d0.Z*rv.Z)
+	c := d0.LengthSq()
+	t := 0.0
+	if a < 0 {
+		disc := b*b - 4*a*c
+		if disc >= 0 {
+			sq := math.Sqrt(disc)
+			t = math.Max((-b+sq)/(2*a), (-b-sq)/(2*a))
+			if !(t > 0) {
+				t = 0
+			}
+		}
+	}
+	d := d0
+	d.AddScaledVector(rv, t)
 	d.MultiplyScalar(1 / math.Max(d.Length(), 1e-3))
 	if aimDot > -1 && fwdDot(e, d) < aimDot {
 		return
@@ -184,7 +204,7 @@ func tryFire(e *Enemy, dt float64, targetPos Vec3, w *World, aimDot float64, tar
 	g := e.Stats.FireGap
 	e.FireCd = g[0] + w.Rng.Float64()*(g[1]-g[0])
 	v := d
-	v.MultiplyScalar(enemyBoltSpeed).AddScaledVector(e.Velocity, 0.4)
+	v.MultiplyScalar(enemyBoltSpeed).AddScaledVector(e.Velocity, boltInherit)
 	muzzle := e.Position
 	muzzle.AddScaledVector(d, e.Radius+4)
 	w.Projectiles.Spawn(muzzle, v, teamEnemy, 3.2, nil, kindBolt, "")
@@ -348,8 +368,18 @@ func charger(e *Enemy, dt float64, w *World) {
 	var lead Vec3
 	leadPoint(e.Position, player.Pos, player.Vel, &lead)
 	to := lead
-	to.Sub(e.Position).Normalize()
-	fly(e, dt, to, flyOpts{throttle: 1, drag: 0.06, vmax: e.Vmax * 1.1, turn: e.Stats.Turn * 1.3, set: optDrag | optVmax | optTurn})
+	to.Sub(e.Position)
+	dist := to.Length()
+	to.MultiplyScalar(1 / math.Max(dist, 1e-3))
+	// attack run, not a point-blank orbit: charge in hard, then ease off and
+	// brake inside ~300u to hold a firing line. Wider turn (0.95x vs 1.3x).
+	close := dist < 300
+	o := flyOpts{throttle: 1, drag: 0.06, vmax: e.Vmax * 1.05, turn: e.Stats.Turn * 0.95, set: optDrag | optVmax | optTurn}
+	if close {
+		o.throttle = 0.25
+		o.brake = 0.5
+	}
+	fly(e, dt, to, o)
 	pv := player.Vel
 	tryFire(e, dt, player.Pos, w, 0.94, &pv)
 }

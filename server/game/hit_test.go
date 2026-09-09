@@ -1,6 +1,56 @@
 package game
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+// A shooter that is itself moving used to drag every bolt sideways (the bolt
+// keeps boltInherit * its own velocity) while aiming straight at the target —
+// so a charger circling the player missed even a motionless one. The aim solve
+// now compensates.
+func TestTryFireHitsAStillTarget(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hr := k.Weapons["playerHitRadius"]
+
+	closest := func(shooterVel Vec3) float64 {
+		w := NewWorld(k, "aim-seed")
+		w.Ship.Pos = Vec3{}
+		w.Ship.Vel = Vec3{}
+		e := makeEnemyState("commander", k, w.Rng)
+		e.Position = Vec3{Z: 1000}
+		e.Velocity = shooterVel
+		e.FireCd = 0
+		tv := w.Ship.Vel
+		tryFire(e, 1.0/60, w.Ship.Pos, w, -1, &tv) // aimDot -1 => cone check skipped
+		idx := (w.Projectiles.Cursor - 1 + w.Projectiles.Max) % w.Projectiles.Max
+		if w.Projectiles.Ttl[idx] <= 0 {
+			t.Fatalf("no bolt spawned for shooter vel %+v", shooterVel)
+		}
+		pos, vel := w.Projectiles.Pos[idx], w.Projectiles.Vel[idx]
+		best := math.Inf(1)
+		for i := 0; i < 600; i++ {
+			pos.AddScaledVector(vel, 1.0/60)
+			if d := pos.Length(); d < best {
+				best = d
+			}
+		}
+		return best
+	}
+
+	if d := closest(Vec3{}); d > hr {
+		t.Fatalf("still shooter missed a still target by %.1f (hit radius %.0f)", d, hr)
+	}
+	if d := closest(Vec3{X: 400}); d > hr {
+		t.Fatalf("shooter moving 400 u/s sideways missed a still target by %.1f", d)
+	}
+	if d := closest(Vec3{X: -260, Y: 120, Z: 90}); d > hr {
+		t.Fatalf("shooter moving diagonally missed a still target by %.1f", d)
+	}
+}
 
 // joinBare mirrors the arena run() join case without the goroutine/channels.
 func joinBare(a *Arena) *Player {

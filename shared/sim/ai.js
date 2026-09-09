@@ -25,6 +25,11 @@ let _rng = Math.random;
 // intercept solve so the lead is consistent
 const ENEMY_BOLT_SPEED = 950;
 
+// fraction of the shooter's own velocity a bolt carries at spawn. The aim
+// solve has to know this: a fast, curving shooter (the charger) otherwise
+// drags every bolt sideways and misses even a motionless target.
+const BOLT_INHERIT = 0.4;
+
 // Where to aim so a bolt of speed ENEMY_BOLT_SPEED meets a target at `tpos`
 // moving at `tvel`. Exact closed form: with d = tpos - from and s the bolt
 // speed, solve |d + tvel·t| = s·t, i.e. the quadratic
@@ -88,17 +93,37 @@ function fly(e, dt, aimDir, { turn = e.stats.turn, throttle = 1, brake = 0, brak
 function tryFire(e, dt, targetPos, ctx, aimDot = 0.985, targetVel = null) {
   e.fireCd -= dt;
   if (e.fireCd > 0) return;
-  _d.copy(targetPos).sub(e.position);
-  if (_d.length() > e.stats.fireRange) return;
+  const d0x = targetPos.x - e.position.x, d0y = targetPos.y - e.position.y, d0z = targetPos.z - e.position.z;
+  if (Math.hypot(d0x, d0y, d0z) > e.stats.fireRange) return;
 
-  const aimAt = targetVel ? leadPoint(e.position, targetPos, targetVel, _lead) : targetPos;
-  _d.copy(aimAt).sub(e.position);
-  _d.multiplyScalar(1 / Math.max(_d.length(), 1e-3));
+  // The bolt leaves at ENEMY_BOLT_SPEED*dir + BOLT_INHERIT*e.velocity. Solve
+  // the intercept for the target velocity RELATIVE to that inherited drift,
+  // then aim the 950-unit part of the bolt along the residual — so the bolt
+  // itself (drift included) lands on the lead point.
+  const rvx = (targetVel ? targetVel.x : 0) - BOLT_INHERIT * e.velocity.x;
+  const rvy = (targetVel ? targetVel.y : 0) - BOLT_INHERIT * e.velocity.y;
+  const rvz = (targetVel ? targetVel.z : 0) - BOLT_INHERIT * e.velocity.z;
+  const a = rvx * rvx + rvy * rvy + rvz * rvz - ENEMY_BOLT_SPEED * ENEMY_BOLT_SPEED;
+  const b = 2 * (d0x * rvx + d0y * rvy + d0z * rvz);
+  const c = d0x * d0x + d0y * d0y + d0z * d0z;
+  let t = 0;
+  if (a < 0) {
+    const disc = b * b - 4 * a * c;
+    if (disc >= 0) {
+      const sq = Math.sqrt(disc);
+      t = Math.max((-b + sq) / (2 * a), (-b - sq) / (2 * a));
+      if (!(t > 0)) t = 0;
+    }
+  }
+  // 950*dir = d0 + relV*t
+  let ax = d0x + rvx * t, ay = d0y + rvy * t, az = d0z + rvz * t;
+  const al = Math.hypot(ax, ay, az) || 1e-3;
+  _d.set(ax / al, ay / al, az / al);
   if (aimDot > -1 && _f.dot(_d) < aimDot) return;
 
   const g = e.stats.fireGap;
   e.fireCd = g[0] + _rng() * (g[1] - g[0]);
-  const v = _d.clone().multiplyScalar(ENEMY_BOLT_SPEED).addScaledVector(e.velocity, 0.4);
+  const v = _d.clone().multiplyScalar(ENEMY_BOLT_SPEED).addScaledVector(e.velocity, BOLT_INHERIT);
   ctx.weapons.spawn(e.position.clone().addScaledVector(_d, e.radius + 4), v, 'enemy', 3.2);
   ctx.fx?.enemyLaser?.();
 }
@@ -196,10 +221,21 @@ function charger(e, dt, ctx) {
   // curve the charge toward the intercept so the nose (and the shot) lead a
   // crossing player instead of always trailing them
   const aim = leadPoint(e.position, player.position, player.velocity, _lead);
-  const to = _d.copy(aim).sub(e.position).normalize();
-  fly(e, dt, to, { throttle: 1, drag: 0.06, vmax: e.vmax * 1.1, turn: e.stats.turn * 1.3 });
-  // keep the cone fairly wide — a charging ship can't hold a tight bead; the
-  // intercept lead is what makes the loose spray actually connect
+  const to = _d.copy(aim).sub(e.position);
+  const dist = to.length();
+  to.multiplyScalar(1 / Math.max(dist, 1e-3));
+  // an attack run, not a knife-fight orbit: charge in hard, then ease right
+  // off and brake inside ~300u so it holds a firing line a few hundred units
+  // out instead of whipping around the player point-blank. Wider turn than
+  // before (0.95x vs 1.3x) so the arcs read as passes.
+  const close = dist < 300;
+  fly(e, dt, to, {
+    throttle: close ? 0.25 : 1,
+    brake: close ? 0.5 : 0,
+    drag: 0.06,
+    vmax: e.vmax * 1.05,
+    turn: e.stats.turn * 0.95,
+  });
   tryFire(e, dt, player.position, ctx, 0.94, player.velocity);
 }
 
