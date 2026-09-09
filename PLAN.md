@@ -5,9 +5,9 @@ they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
 **Status:** M0 + M1 merged & deployed to `www.hmpf.cz/netwars/`. Follow-ups
 also in: mote polish, real HYG star catalogue, leading enemy fire.
-**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1 done
-(rng threading + `stepWorld` consolidation, parity-verified); M2.2 next
-(golden.html + Go skeleton).**
+**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1 + M2.2 done
+(stepWorld consolidation parity-verified; golden vector + Go skeleton, RNG
+twin passes). M2.3 next — port `shared/sim` → Go, green the golden test.**
 
 ---
 
@@ -134,15 +134,18 @@ manual one-off; not part of build or CI.)
         seeded LCG, 9000 ticks / 150 s incl. a level-lost restart) →
         WORST Δ 0. Browser: 60 fps, 0 errors, restart + mesh diff-render
         (6/6 pods, 4/4 enemies) clean.
-- [ ] **M2.2** `tools/golden.html` — a dev page: imports `shared/sim`, runs
-      `stepWorld` 600 ticks off `makeRng('golden')`, serialises the world
-      each tick, hands over `golden.json` to save into
-      `server/testdata/`. Commit the file. Then Go module `server/` skeleton:
-      `go.mod` (`github.com/coder/websocket`), `cmd/netwars-server/main.go`
-      (flags `-addr :8080 -tick 60 -snap 25`, `go:embed
-      ../shared/constants.json`, SIGINT/TERM), `game/rng.go` (xorshift, seed
-      behaviour matching `shared/sim/rng.js`), stub `game/world.go`,
-      `game/golden_test.go` (loads the committed JSON; skips until M2.3).
+- [x] **M2.2** *(m2-world: 0d250bb)* `tools/golden.html` runs `stepWorld` 600
+      ticks off `makeRng('golden')` (scripted Lissajous ship + fixed cannon
+      cadence), snapshots every tick → `server/game/testdata/golden.json`
+      (committed, 1.7 MB). Go module `server/`: `game/rng.go` (xorshift128
+      twin — `rng_test.go` asserts the exact first-8 u32 for seed "golden"
+      from JS, **passes**), `game/constants.go` (`//go:embed constants.json`
+      copy + `GoalsForLevel`; server prints `map[pirate:3 raider:1]`,
+      matches), `game/world.go` stub (`StepWorld` panics until M2.3),
+      `game/golden{,_test}.go` (loads + validates the vector; parity test
+      skipped until M2.3), `cmd/netwars-server/main.go` (flags, embedded
+      constants, SIGINT/TERM). `go vet && go build && go test ./...` green.
+      No `coder/websocket` dep yet (M2.4). SP path untouched.
 - [ ] **M2.3** Port `shared/sim` → Go function-for-function: `flight.go`,
       `ai.go`, `weapons.go`, `rules.go`, `world.go`. `golden_test.go` runs
       the Go `stepWorld` on the same seed and asserts each tick matches the
