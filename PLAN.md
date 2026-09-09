@@ -105,6 +105,15 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
 `net.js` is only imported when `location.hash` is present; a failed connect
 falls back to `sp.js`. Each slice: committed + SP re-verified before the next.
 
+**No Node in the loop.** Toolchain is Go + the browser only. The one place
+that wanted a JS runtime — generating the golden reference vector — is done
+by a one-off browser page (`tools/golden.html`) that dumps
+`server/testdata/golden.json`; it's committed, and `go test` / CI just read
+the file. Regenerate it (open the page, save) only when `shared/sim`
+changes on purpose — that's also when the Go port must be re-synced, which
+the now-failing Go test flags. (`tools/build-stars.mjs` stays a rare
+manual one-off; not part of build or CI.)
+
 - [ ] **M2.1** `shared/sim/world.js` — pure `makeWorld()` + `stepWorld(world,
       control, dt)` that runs one shared tick: `stepShip` (own ship) →
       `stepEnemy` ×N → `stepPods` → `stepBonuses` → `Projectiles.step` →
@@ -114,18 +123,23 @@ falls back to `sp.js`. Each slice: committed + SP re-verified before the next.
       `shared/sim` as event-returning pure fns (server must own that damage).
       `sp.js` swaps its ~15-line orchestration block for one `stepWorld` call
       + an event switch driving `hud`/`explosions`/`audio` (client-only).
-      **Parity-verified** vs. current SP: seeded RNG, 600 ticks of varied
-      control, pos/vel/quat/hp/score/level deltas 0. No new deps.
-- [ ] **M2.2** Go module `server/` skeleton: `go.mod`
-      (`github.com/coder/websocket`), `cmd/netwars-server/main.go` (flags
-      `-addr :8080 -tick 60 -snap 25`, `go:embed ../shared/constants.json`,
-      SIGINT/TERM), `game/rng.go` (xorshift, seed behaviour matching JS),
-      stub `game/world.go`. Golden-vector harness: a Node script dumps
-      `shared/sim` state over 600 seeded ticks to `testdata/golden.json`;
-      a Go test loads + parses it (green once the port lands).
+      **Parity-verified** vs. current SP *in the browser* (old modules via
+      `git show origin/main:…` vs new, seeded rng, 600 ticks of varied
+      control, pos/vel/quat/hp/score/level deltas 0) — same method as every
+      M0 slice. No new deps, no Node.
+- [ ] **M2.2** `tools/golden.html` — a dev page: imports `shared/sim`, runs
+      `stepWorld` 600 ticks off `makeRng('golden')`, serialises the world
+      each tick, hands over `golden.json` to save into
+      `server/testdata/`. Commit the file. Then Go module `server/` skeleton:
+      `go.mod` (`github.com/coder/websocket`), `cmd/netwars-server/main.go`
+      (flags `-addr :8080 -tick 60 -snap 25`, `go:embed
+      ../shared/constants.json`, SIGINT/TERM), `game/rng.go` (xorshift, seed
+      behaviour matching `shared/sim/rng.js`), stub `game/world.go`,
+      `game/golden_test.go` (loads the committed JSON; skips until M2.3).
 - [ ] **M2.3** Port `shared/sim` → Go function-for-function: `flight.go`,
-      `ai.go`, `weapons.go`, `rules.go`, `world.go`. Golden-vector test
-      passes (tol 1e-4, 600 ticks). No client impact.
+      `ai.go`, `weapons.go`, `rules.go`, `world.go`. `golden_test.go` runs
+      the Go `stepWorld` on the same seed and asserts each tick matches the
+      committed `golden.json` within 1e-4. No client impact, no Node.
 - [ ] **M2.4** Transport + arena: `ws/conn.go` (coder/websocket, read/write
       pumps, JSON frames), `proto/` (`hello`/`input`/`ping` ↔
       `welcome`/`snapshot`/`event`/`pong`), `game/session.go` (session_id →
@@ -146,9 +160,11 @@ falls back to `sp.js`. Each slice: committed + SP re-verified before the next.
 - [ ] **M2.7** Deploy: `GOOS=linux GOARCH=amd64` build, `scp`, systemd unit
       (`Restart=on-failure`), Caddyfile `netwars.hmpf.cz { reverse_proxy
       localhost:8080 }`, DNS `netwars.hmpf.cz` → the box.
-- [ ] **M2.8 Verify**: golden-vector JS↔Go in CI; two local browser profiles
-      co-op on `netwars.localhost` (Caddy internal CA); real 2-person
-      internet co-op with an RTT/jitter overlay.
+- [ ] **M2.8 Verify**: `go test ./...` (golden-vector) green in CI; two local
+      browser profiles co-op on `netwars.localhost` (Caddy internal CA); real
+      2-person internet co-op with an RTT/jitter overlay. If a JS-only
+      `shared/sim` change ever needs an *automatic* parity gate, add a
+      Playwright CI step — deferred, heavier than the manual re-bless.
 
 ## M3 — deathmatch
 
