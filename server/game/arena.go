@@ -23,12 +23,13 @@ type Player struct {
 	out  chan []byte // -> this client's write pump
 
 	// input state, updated by the arena from Input frames
-	ctrl    Control
-	lastSeq int
-	wantGun bool
-	wantMsl bool
-	gunCd   float64
-	mslCd   float64
+	ctrl      Control
+	lastSeq   int
+	wantGun   bool
+	wantMsl   bool
+	mslTarget int // enemy index the client locked, -1 = none
+	gunCd     float64
+	mslCd     float64
 }
 
 func (p *Player) send(b []byte) {
@@ -112,6 +113,7 @@ func (a *Arena) run(ctx context.Context) {
 			a.nextID++
 			p.ID = "p" + itoa(a.nextID)
 			p.Ship = newShip(a.k)
+			p.mslTarget = -1
 			a.players[p.ID] = p
 			a.order = append(a.order, p.ID)
 			p.send(proto.Marshal(proto.Welcome{
@@ -163,6 +165,7 @@ func (a *Arena) applyInput(p *Player, in proto.Input) {
 	if in.FireMissile {
 		p.wantMsl = true
 	}
+	p.mslTarget = in.MslTarget
 }
 
 func (a *Arena) step() {
@@ -247,7 +250,16 @@ func (a *Arena) fireWeapons(p *Player) {
 		pos.AddScaledVector(upV, kp.MissileHardpoint.Up)
 		vel := s.Vel
 		vel.AddScaledVector(fwdV, kp.MissileMuzzle)
-		a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.MissileLife, nil, kindMsl)
+
+		// guide toward the enemy the client had locked (index into the
+		// snapshot's fleet), if it's still alive; else the missile is ballistic
+		var tgt *Enemy
+		if p.mslTarget >= 0 && p.mslTarget < len(a.world.Fleet.List) {
+			if e := a.world.Fleet.List[p.mslTarget]; !e.Dead {
+				tgt = e
+			}
+		}
+		a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.MissileLife, tgt, kindMsl)
 	}
 	p.wantMsl = false
 }

@@ -152,7 +152,11 @@ function runOnline({ ws, welcome }, { mode }) {
 
   // the local ship spawns/fires only on the server — a no-op weapons proxy so
   // player.update() does its flight prediction without spawning bolts locally
-  const predictWeapons = { spawn() {}, playerMissileActive: () => world._selfMsl, playerMissileGuided: () => false };
+  const predictWeapons = {
+    spawn() {},                                                   // server owns spawns
+    playerMissileActive: () => world.projectiles.playerMissileActive(),
+    playerMissileGuided: () => false,
+  };
 
   applySnapshot(welcome.snapshot, true);
 
@@ -219,6 +223,7 @@ function runOnline({ ws, welcome }, { mode }) {
     let thrust = 0;
     if (input.has('KeyW') || input.has('ArrowUp')) thrust += 1;
     if (input.has('KeyS') || input.has('ArrowDown')) thrust -= 1;
+    const mt = player.lockTarget ? enemies.list.indexOf(player.lockTarget) : -1;
     ws.send(JSON.stringify({
       type: 'input', seq: ++seq, t: performance.now(),
       ix: player.intent.x, iy: player.intent.y, roll, thrust,
@@ -227,6 +232,7 @@ function runOnline({ ws, welcome }, { mode }) {
       stop: input.has('KeyX'),
       gun: input.has('Space') || input.mouseFire,
       msl: input.has('KeyF') || input.mouseRight,
+      mt,
     }));
   }
 

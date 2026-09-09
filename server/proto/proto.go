@@ -58,6 +58,9 @@ type Input struct {
 	Stop        bool    `json:"stop"`
 	FireGun     bool    `json:"gun"`
 	FireMissile bool    `json:"msl"`
+	// index into the last snapshot's enemies[] the client has locked for a
+	// guided missile; -1 = none / ballistic.
+	MslTarget int `json:"mt"`
 }
 
 type Ping struct {
