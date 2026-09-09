@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"log"
+	"math"
 	"time"
 
 	"github.com/martinpovolny/netwars/server/proto"
@@ -86,6 +87,20 @@ func newShip(k *Constants) *Ship {
 	}
 }
 
+// spawnSlot spreads players so no two ships start on top of each other.
+// Slot 0 is the origin; the rest sit on a phyllotaxis spiral in the y=0
+// plane — the golden angle keeps any number of players from stacking up
+// collinearly. Spacing is well beyond the ship radius (7).
+func spawnSlot(i int) Vec3 {
+	if i <= 0 {
+		return Vec3{}
+	}
+	const spacing = 70.0
+	r := spacing * math.Sqrt(float64(i))
+	ang := float64(i) * 2.399963229728653 // golden angle, radians
+	return Vec3{X: r * math.Cos(ang), Z: r * math.Sin(ang)}
+}
+
 // resetShip — the Go twin of client/player.js#reset (level (re)start).
 func resetShip(s *Ship, k *Constants) {
 	s.Pos = Vec3{}
@@ -113,6 +128,7 @@ func (a *Arena) run(ctx context.Context) {
 			a.nextID++
 			p.ID = "p" + itoa(a.nextID)
 			p.Ship = newShip(a.k)
+			p.Ship.Pos = spawnSlot(len(a.order)) // index this player is about to take
 			p.mslTarget = -1
 			a.players[p.ID] = p
 			a.order = append(a.order, p.ID)
@@ -188,8 +204,9 @@ func (a *Arena) step() {
 	// SP client does the same in its frame loop). Respawn every ship.
 	for _, ev := range evs {
 		if ev.Kind == "level" && ev.Action.StartLevel != 0 {
-			for _, id := range a.order {
+			for i, id := range a.order {
 				resetShip(a.players[id].Ship, a.k)
+				a.players[id].Ship.Pos = spawnSlot(i)
 			}
 			a.world.StartWorldLevel(ev.Action.StartLevel, int(a.k.Pods["perLevel"]))
 		}
