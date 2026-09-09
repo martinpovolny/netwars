@@ -253,13 +253,13 @@ func (a *Arena) fireWeapons(p *Player) {
 			pos.AddScaledVector(fwdV, kp.GunHardpoint.Fwd)
 			vel := s.Vel
 			vel.AddScaledVector(fwdV, kp.CannonMuzzle)
-			a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.BoltTtl, nil, kindBolt)
+			a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.BoltTtl, nil, kindBolt, p.ID)
 		}
 	}
 	p.wantGun = false
 
 	p.mslCd -= tickDT
-	if p.wantMsl && p.mslCd <= 0 && s.Missiles > 0 && !a.world.Projectiles.PlayerMissileActive() {
+	if p.wantMsl && p.mslCd <= 0 && s.Missiles > 0 && !a.world.Projectiles.PlayerMissileActive(p.ID) {
 		p.mslCd = kp.MissileInterval
 		s.Missiles--
 		pos := s.Pos
@@ -276,7 +276,7 @@ func (a *Arena) fireWeapons(p *Player) {
 				tgt = e
 			}
 		}
-		a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.MissileLife, tgt, kindMsl)
+		a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.MissileLife, tgt, kindMsl, p.ID)
 	}
 	p.wantMsl = false
 }

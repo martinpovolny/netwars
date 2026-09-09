@@ -186,7 +186,7 @@ func tryFire(e *Enemy, dt float64, targetPos Vec3, w *World, aimDot float64, tar
 	v.MultiplyScalar(enemyBoltSpeed).AddScaledVector(e.Velocity, 0.4)
 	muzzle := e.Position
 	muzzle.AddScaledVector(d, e.Radius+4)
-	w.Projectiles.Spawn(muzzle, v, teamEnemy, 3.2, nil, kindBolt)
+	w.Projectiles.Spawn(muzzle, v, teamEnemy, 3.2, nil, kindBolt, "")
 	// fx?.enemyLaser() is client-only
 }
 

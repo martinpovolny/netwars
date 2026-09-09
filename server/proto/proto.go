@@ -116,6 +116,7 @@ type ProjS struct {
 	Vel  Vec3   `json:"v"`
 	Team string `json:"tm"`
 	Kind string `json:"kd"`
+	Own  string `json:"o,omitempty"` // player id that fired it ("" for enemy shots)
 }
 
 // Snapshot is the authoritative shared world for one client. Ship is that

@@ -20,6 +20,7 @@ type Projectiles struct {
 	Age    []float64
 	Team   []string
 	Kind   []string
+	Owner  []string // player id that fired it ("" for enemy shots)
 	Target []*Enemy
 	Cursor int
 }
@@ -31,11 +32,12 @@ func newProjectiles(kw Block) *Projectiles {
 		Pos: make([]Vec3, n), Vel: make([]Vec3, n),
 		Ttl: make([]float64, n), Age: make([]float64, n),
 		Team: make([]string, n), Kind: make([]string, n),
+		Owner:  make([]string, n),
 		Target: make([]*Enemy, n),
 	}
 }
 
-func (p *Projectiles) Spawn(pos, vel Vec3, team string, ttl float64, target *Enemy, kind string) {
+func (p *Projectiles) Spawn(pos, vel Vec3, team string, ttl float64, target *Enemy, kind, owner string) {
 	i := p.Cursor
 	p.Cursor = (p.Cursor + 1) % p.Max
 	p.Pos[i] = pos
@@ -44,12 +46,16 @@ func (p *Projectiles) Spawn(pos, vel Vec3, team string, ttl float64, target *Ene
 	p.Age[i] = 0
 	p.Team[i] = team
 	p.Kind[i] = kind
+	p.Owner[i] = owner
 	p.Target[i] = target
 }
 
-func (p *Projectiles) PlayerMissileActive() bool {
+// PlayerMissileActive reports whether `owner` already has a guided missile in
+// the air — the "one missile on screen" rule is per player, so in co-op one
+// pilot's missile never blocks another's.
+func (p *Projectiles) PlayerMissileActive(owner string) bool {
 	for i := 0; i < p.Max; i++ {
-		if p.Ttl[i] > 0 && p.Team[i] == teamPlayer && p.Kind[i] == kindMsl {
+		if p.Ttl[i] > 0 && p.Team[i] == teamPlayer && p.Kind[i] == kindMsl && p.Owner[i] == owner {
 			return true
 		}
 	}

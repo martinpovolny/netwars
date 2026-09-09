@@ -70,7 +70,7 @@ func fireCannon(w *World, t int) {
 	vel.AddScaledVector(dir, w.K.Player.CannonMuzzle)
 	muzzle := w.Ship.Pos
 	muzzle.AddScaledVector(dir, 12)
-	w.Projectiles.Spawn(muzzle, vel, teamPlayer, w.K.Player.BoltTtl, nil, kindBolt)
+	w.Projectiles.Spawn(muzzle, vel, teamPlayer, w.K.Player.BoltTtl, nil, kindBolt, "golden")
 }
 
 func near(a, b float64) bool { return math.Abs(a-b) <= parityTol }

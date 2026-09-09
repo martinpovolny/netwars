@@ -110,7 +110,7 @@ function runOnline({ ws, welcome }, { mode }) {
     fleet: { list: [], level: welcome.snapshot.level || 1, goals: {} },   // goals: M2.6 (server sends per-class remaining)
     pods: { list: [], centroid: new THREE.Vector3(), total: K.pods.perLevel, get alive() { return this.list.length; } },
     bonuses: { list: [] },
-    projectiles: makeProjStore(K.weapons.max),
+    projectiles: makeProjStore(K.weapons.max, welcome.playerId),
     fsm: { state: welcome.snapshot.fsm || 'playing' },
     score: welcome.snapshot.score || 0,
     others: [],           // other players' ships (meshes)
@@ -262,6 +262,11 @@ function runOnline({ ws, welcome }, { mode }) {
 
   // ---- snapshot -> world ------------------------------------
   const _v = new THREE.Vector3();
+  // reconcile smoothing: each snapshot moves player.position straight to the
+  // authoritative value, but the leftover jump is parked in camErr and eased
+  // out over a few frames so the *view* doesn't judder at the snapshot rate.
+  // (proper unacked-input replay is M2.5b; this just hides the pop.)
+  const camErr = new THREE.Vector3();
   function applySnapshot(s, first) {
     world.fleet.level = s.level;
     world.score = s.score;
@@ -280,8 +285,23 @@ function runOnline({ ws, welcome }, { mode }) {
     } else {
       _v.set(sh.p[0], sh.p[1], sh.p[2]);
       const err = player.position.distanceTo(_v);
-      player.position.lerp(_v, err > 200 ? 1 : 0.15);      // snap on a big miss, else ease
-      player.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
+      if (err > 200) {
+        player.position.copy(_v);   // big desync / respawn — hard snap, view included
+        player.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
+        camErr.set(0, 0, 0);
+      } else {
+        // carry (oldPos - authoritative) into camErr, then move the ship to
+        // authoritative: camera = player.position + camErr stays continuous.
+        camErr.add(player.position).sub(_v);
+        const m = camErr.length();
+        if (m > 50) camErr.multiplyScalar(50 / m);   // cap so one bad frame can't fling the view
+        player.position.copy(_v);
+        // keep velocity purely predicted while the gap is small — writing a
+        // ~1-RTT-stale server velocity every snapshot kinks the integrated
+        // path and reads as jitter. Only adopt it when the gap is big enough
+        // to mean an unpredicted event (hit / knockback / hard turn).
+        if (err > 12) player.velocity.lerp(_v.set(sh.v[0], sh.v[1], sh.v[2]), 0.5);
+      }
     }
 
     syncOthers(s.others || []);
@@ -328,6 +348,7 @@ function runOnline({ ws, welcome }, { mode }) {
       pr.vel[i].set(q.v[0], q.v[1], q.v[2]);
       pr.team[i] = q.tm;
       pr.kind[i] = q.kd;
+      pr.own[i] = q.o || '';
       pr.ttl[i] = 1;
     }
   }
@@ -375,7 +396,9 @@ function runOnline({ ws, welcome }, { mode }) {
     wasAlive = player.alive;
 
     if (player.alive) {
-      camera.position.copy(player.position);
+      camErr.multiplyScalar(Math.exp(-dt / 0.09));   // ~90 ms time constant
+      if (camErr.lengthSq() < 1e-6) camErr.set(0, 0, 0);
+      camera.position.copy(player.position).add(camErr);
       camera.quaternion.copy(player.quaternion);
     } else {
       _lookAt.copy(world.pods.centroid);
@@ -419,17 +442,19 @@ function runOnline({ ws, welcome }, { mode }) {
 
 // --- helpers ---------------------------------------------------------
 
-function makeProjStore(max) {
+function makeProjStore(max, selfId) {
   const pos = [], vel = [];
   for (let i = 0; i < max; i++) { pos.push(new THREE.Vector3()); vel.push(new THREE.Vector3()); }
   const s = {
-    max, pos, vel,
+    max, pos, vel, selfId,
     ttl: new Float32Array(max), age: new Float32Array(max),
     team: new Array(max).fill('player'), kind: new Array(max).fill('bolt'),
+    own: new Array(max).fill(''),
     target: new Array(max).fill(null),
     spawn() {},   // net.js never spawns locally; bolts come from snapshots
+    // per-player: only *my* live missile gates *my* re-fire (co-op)
     playerMissileActive() {
-      for (let i = 0; i < max; i++) if (s.ttl[i] > 0 && s.team[i] === 'player' && s.kind[i] === 'missile') return true;
+      for (let i = 0; i < max; i++) if (s.ttl[i] > 0 && s.kind[i] === 'missile' && s.own[i] === s.selfId) return true;
       return false;
     },
     playerMissileGuided() { return false; },

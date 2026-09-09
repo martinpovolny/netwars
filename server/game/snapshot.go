@@ -52,7 +52,7 @@ func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Ship) proto
 		}
 		s.Proj = append(s.Proj, proto.ProjS{
 			I: i, Pos: pv(w.Projectiles.Pos[i]), Vel: pv(w.Projectiles.Vel[i]),
-			Team: w.Projectiles.Team[i], Kind: w.Projectiles.Kind[i],
+			Team: w.Projectiles.Team[i], Kind: w.Projectiles.Kind[i], Own: w.Projectiles.Owner[i],
 		})
 	}
 	return s
