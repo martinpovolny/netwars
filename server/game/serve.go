@@ -10,12 +10,17 @@ import (
 	"github.com/martinpovolny/netwars/server/proto"
 )
 
+// AllowedOrigins gates cross-origin WebSocket upgrades (same-origin is always
+// allowed by coder/websocket regardless). host[:port] patterns, "*" wildcard
+// ok. Empty => same-origin only. main.go can replace it from a flag.
+var AllowedOrigins = []string{"netwars.hmpf.cz", "www.hmpf.cz", "localhost:*", "127.0.0.1:*"}
+
 // HandleConn upgrades one HTTP request to a WebSocket, does the hello
 // handshake, joins the session's arena, and pumps frames until the socket
 // closes. One read goroutine (this one) + one write goroutine per connection.
 func HandleConn(parent context.Context, w http.ResponseWriter, r *http.Request, s *Sessions) {
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"*"}, // TODO(M2.7): pin to the Pages origin
+		OriginPatterns: AllowedOrigins,
 	})
 	if err != nil {
 		return

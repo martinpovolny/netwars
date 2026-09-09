@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,7 +23,15 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address (plain ws; Caddy terminates TLS)")
+	origins := flag.String("origins", strings.Join(game.AllowedOrigins, ","),
+		"comma-separated host[:port] patterns allowed to open the arena WebSocket cross-origin (empty = same-origin only)")
 	flag.Parse()
+	game.AllowedOrigins = nil
+	for _, o := range strings.Split(*origins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			game.AllowedOrigins = append(game.AllowedOrigins, o)
+		}
+	}
 
 	k, err := game.LoadConstants()
 	if err != nil {
