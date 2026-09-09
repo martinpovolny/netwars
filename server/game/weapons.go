@@ -125,11 +125,15 @@ func (p *Projectiles) Step(dt float64, w *World) []Event {
 				hit = true
 			}
 		} else {
-			if w.Ship.Alive && p.Pos[i].DistanceToSq(w.Ship.Pos) < kw["playerHitRadius"]*kw["playerHitRadius"] {
-				absorbed := w.Ship.Invuln > 0
-				w.Ship.Damage(kw["enemyDmgPlayer"])
-				events = append(events, Event{Kind: "playerHit", Pos: p.Pos[i], Absorbed: absorbed})
-				hit = true
+			hr := kw["playerHitRadius"] * kw["playerHitRadius"]
+			for _, sh := range w.shipList() {
+				if sh.Alive && p.Pos[i].DistanceToSq(sh.Pos) < hr {
+					absorbed := sh.Invuln > 0
+					sh.Damage(kw["enemyDmgPlayer"])
+					events = append(events, Event{Kind: "playerHit", Pos: p.Pos[i], Absorbed: absorbed})
+					hit = true
+					break
+				}
 			}
 			if !hit {
 				for _, pod := range w.Pods.List {

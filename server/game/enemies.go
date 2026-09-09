@@ -15,6 +15,7 @@ type Fleet struct {
 	Level   int
 	Goals   []goalEntry // ordered — matches the JSON key order of the level table
 	Pending []goalEntry
+	NextID  int // monotonic per arena — a stable handle for the client to match on
 }
 
 func makeFleet() *Fleet { return &Fleet{} }
@@ -111,6 +112,8 @@ func spawnEnemy(f *Fleet, anchor, playerPos Vec3, k *Constants, rng *Rng) bool {
 	decGoal(f.Pending, typ)
 
 	e := makeEnemyState(typ, k, rng)
+	e.ID = f.NextID
+	f.NextID++
 	var dir Vec3
 	RandomDir(rng, &dir)
 	dir.MultiplyScalar(k.Enemy["spawnMin"] + rng.Float64()*k.Enemy["spawnRange"]).Add(anchor)

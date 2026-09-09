@@ -31,7 +31,7 @@ func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Ship) proto
 			continue
 		}
 		s.Enemies = append(s.Enemies, proto.EnemyS{
-			Type: e.Type, Pos: pv(e.Position), Vel: pv(e.Velocity), Quat: pq(e.Quaternion), HP: e.HP,
+			ID: e.ID, Type: e.Type, Pos: pv(e.Position), Vel: pv(e.Velocity), Quat: pq(e.Quaternion), HP: e.HP,
 		})
 	}
 	for _, p := range w.Pods.List {

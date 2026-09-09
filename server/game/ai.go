@@ -25,6 +25,7 @@ type eStats struct {
 // Enemy: the non-render half of the old client Enemy (shared/sim/enemies.js
 // makeEnemyState).
 type Enemy struct {
+	ID         int
 	Type       string
 	Stats      *eStats
 	Behavior   string
@@ -201,7 +202,7 @@ func fwdDot(e *Enemy, x Vec3) float64 {
 // ---- behaviours -------------------------------------------------------
 
 func brawler(e *Enemy, dt float64, w *World) {
-	player := w.Ship
+	player := w.aimShip(e.Position)
 	tgt := e.AimPos
 	tgtIsPlayer := false
 	if player.Alive && player.Pos.DistanceTo(e.Position) < 380 {
@@ -296,7 +297,7 @@ func pickPerch(e *Enemy, playerPos Vec3, rng *Rng) {
 }
 
 func sniper(e *Enemy, dt float64, w *World) {
-	player := w.Ship
+	player := w.aimShip(e.Position)
 	if e.State != "relocate" && e.State != "hold" {
 		e.State = "relocate"
 		pickPerch(e, player.Pos, w.Rng)
@@ -343,7 +344,7 @@ func sniper(e *Enemy, dt float64, w *World) {
 }
 
 func charger(e *Enemy, dt float64, w *World) {
-	player := w.Ship
+	player := w.aimShip(e.Position)
 	var lead Vec3
 	leadPoint(e.Position, player.Pos, player.Vel, &lead)
 	to := lead
@@ -354,7 +355,7 @@ func charger(e *Enemy, dt float64, w *World) {
 }
 
 func thief(e *Enemy, dt float64, w *World) {
-	player := w.Ship
+	player := w.aimShip(e.Position)
 	pods := w.Pods
 	if e.Loot == nil || e.Loot.Dead || (e.Loot.Captor != nil && e.Loot.Captor != e) {
 		if e.State == "haul" {
@@ -419,7 +420,7 @@ func stepEnemy(e *Enemy, w *World, dt float64) {
 	e.Repick -= dt
 
 	if e.Stats.Target == "player" {
-		e.AimPos = w.Ship.Pos
+		e.AimPos = w.aimShip(e.Position).Pos
 	} else if e.Behavior != "thief" {
 		if e.Repick <= 0 || e.TargetPod == nil || e.TargetPod.Dead {
 			e.TargetPod = nearestPod(e.Position, w.Pods)
@@ -428,7 +429,7 @@ func stepEnemy(e *Enemy, w *World, dt float64) {
 		if e.TargetPod != nil {
 			e.AimPos = e.TargetPod.Position
 		} else {
-			e.AimPos = w.Ship.Pos
+			e.AimPos = w.aimShip(e.Position).Pos
 		}
 	}
 

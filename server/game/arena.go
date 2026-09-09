@@ -188,13 +188,29 @@ func (a *Arena) step() {
 	a.tick++
 
 	// integrate every ship from its input, then resolve its fire
+	a.world.Ships = a.world.Ships[:0]
 	for _, id := range a.order {
 		p := a.players[id]
+		// grace + hit-pulse decay — client/player.js does this in its flight
+		// step; the server had no equivalent, so a reset ship stayed invuln
+		// forever and never took a hit.
+		if p.Ship.Invuln > 0 {
+			if p.Ship.Invuln -= tickDT; p.Ship.Invuln < 0 {
+				p.Ship.Invuln = 0
+			}
+		}
+		if p.Ship.HitPulse > 0 {
+			if p.Ship.HitPulse -= tickDT * a.k.Player.HitPulseDecay; p.Ship.HitPulse < 0 {
+				p.Ship.HitPulse = 0
+			}
+		}
 		StepShip(p.Ship, p.ctrl, tickDT, a.k.Player)
 		a.fireWeapons(p)
+		a.world.Ships = append(a.world.Ships, p.Ship)
 	}
 
-	// StepWorld targets one "focus" ship (M2.6 generalises to N).
+	// order[0] is the "focus" ship (pods spawn around it, FSM watches it);
+	// enemy AI / fire / rams resolve against every ship in a.world.Ships.
 	if len(a.order) > 0 {
 		a.world.Ship = a.players[a.order[0]].Ship
 	}

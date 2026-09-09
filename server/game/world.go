@@ -1,5 +1,7 @@
 package game
 
+import "math"
+
 // World is the Go twin of shared/sim/world.js — the authoritative shared state
 // for one arena. The local player's ship is integrated elsewhere (client
 // prediction / server input integration); StepWorld runs everything the shared
@@ -45,9 +47,14 @@ type Event struct {
 }
 
 type World struct {
-	K           *Constants
-	Rng         *Rng
+	K   *Constants
+	Rng *Rng
+	// Ship is the "focus" ship (pods spawn around it, the level FSM watches
+	// it). Ships is every player ship in the arena — enemy AI, fire and rams
+	// resolve against all of them. In SP / the golden test there is exactly
+	// one, so the two are the same pointer and behaviour is unchanged.
 	Ship        *Ship
+	Ships       []*Ship
 	Fleet       *Fleet
 	Pods        *Pods
 	Bonuses     *Bonuses
@@ -92,6 +99,31 @@ func (w *World) StartWorldLevel(n, podsPerLevel int) {
 	w.FSM.State = "playing"
 }
 
+// shipList is every player ship, falling back to the focus ship (SP / golden
+// build a 1-ship world and never populate Ships).
+func (w *World) shipList() []*Ship {
+	if len(w.Ships) > 0 {
+		return w.Ships
+	}
+	return []*Ship{w.Ship}
+}
+
+// aimShip is the ship an enemy at `from` should target — the nearest live
+// one, else the focus ship (so a fight never goes fully passive).
+func (w *World) aimShip(from Vec3) *Ship {
+	best := w.Ship
+	bd := math.Inf(1)
+	for _, s := range w.shipList() {
+		if !s.Alive {
+			continue
+		}
+		if d := from.DistanceToSq(s.Pos); d < bd {
+			bd, best = d, s
+		}
+	}
+	return best
+}
+
 // StepWorld advances the shared world by dt seconds and returns its events.
 func (w *World) StepWorld(dt float64) []Event {
 	var events []Event
@@ -117,8 +149,10 @@ func (w *World) StepWorld(dt float64) []Event {
 
 	// 4. ram + pod strikes (the old loop guarded these with simDt > 0)
 	if dt > 0 {
-		if ram, ok := checkRam(w.Fleet, w.Ship, ke); ok {
-			events = append(events, ram)
+		for _, sh := range w.shipList() {
+			if ram, ok := checkRam(w.Fleet, sh, ke); ok {
+				events = append(events, ram)
+			}
 		}
 		events = append(events, checkPodStrikes(w.Fleet, w.Pods, ke)...)
 	}

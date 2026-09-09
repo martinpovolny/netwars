@@ -128,13 +128,26 @@ function runOnline({ ws, welcome }, { mode }) {
   function syncOthers(list) {
     for (let i = 0; i < list.length; i++) {
       const color = OTHER_COLORS[i % OTHER_COLORS.length];
-      if (!otherMeshes[i]) { const m = makeDart(color, 1); scene.add(m); otherMeshes[i] = m; }
-      if (!world.others[i]) world.others[i] = { position: new THREE.Vector3(), alive: true, color };
-      const o = list[i], m = otherMeshes[i];
+      const o = list[i];
+      const fresh = !otherMeshes[i];
+      if (fresh) {
+        const m = makeDart(color, 1);
+        m.position.set(o.p[0], o.p[1], o.p[2]);
+        m.quaternion.set(o.q[0], o.q[1], o.q[2], o.q[3]);
+        scene.add(m); otherMeshes[i] = m;
+      }
+      if (!world.others[i]) {
+        world.others[i] = {
+          position: new THREE.Vector3(o.p[0], o.p[1], o.p[2]),
+          tpos: new THREE.Vector3(o.p[0], o.p[1], o.p[2]),
+          tquat: new THREE.Quaternion(o.q[0], o.q[1], o.q[2], o.q[3]),
+          alive: true, color,
+        };
+      }
+      const m = otherMeshes[i];
       m.visible = o.alive;
-      m.position.set(o.p[0], o.p[1], o.p[2]);
-      m.quaternion.set(o.q[0], o.q[1], o.q[2], o.q[3]);
-      world.others[i].position.set(o.p[0], o.p[1], o.p[2]);
+      world.others[i].tpos.set(o.p[0], o.p[1], o.p[2]);
+      world.others[i].tquat.set(o.q[0], o.q[1], o.q[2], o.q[3]);
       world.others[i].alive = o.alive;
       world.others[i].color = color;
     }
@@ -306,36 +319,52 @@ function runOnline({ ws, welcome }, { mode }) {
 
     syncOthers(s.others || []);
 
-    syncList(world.fleet.list, s.enemies || [], (dst, src) => {
-      if (!dst.stats) {
+    // match on the server's stable id, not list position: when an enemy dies
+    // the list shifts, and index-matching would repaint the survivors with
+    // each other's meshes ("the ship type changed but it flies the same").
+    // remote entities carry the server pose in tpos/tquat; the render pose
+    // (position/quaternion) eases toward it each frame in interpRemote() so
+    // ~30 Hz snapshots don't step visibly. New entities snap on first sight.
+    syncById(world.fleet.list, s.enemies || [], (dst, src, isNew) => {
+      if (isNew) {
         dst.type = src.t;
         dst.stats = ENEMY_TYPES[src.t] || ENEMY_TYPES.pirate;
         dst.behavior = dst.stats.behavior;
-        dst.position = new THREE.Vector3();
-        dst.quaternion = new THREE.Quaternion();
+        dst.position = new THREE.Vector3(src.p[0], src.p[1], src.p[2]);
+        dst.quaternion = new THREE.Quaternion(src.q[0], src.q[1], src.q[2], src.q[3]);
+        dst.tpos = dst.position.clone();
+        dst.tquat = dst.quaternion.clone();
         dst.velocity = new THREE.Vector3();
         dst.flash = 0;
         dst.dead = false;
       }
-      dst.position.set(src.p[0], src.p[1], src.p[2]);
-      dst.quaternion.set(src.q[0], src.q[1], src.q[2], src.q[3]);
+      dst.tpos.set(src.p[0], src.p[1], src.p[2]);
+      dst.tquat.set(src.q[0], src.q[1], src.q[2], src.q[3]);
       dst.velocity.set(src.v[0], src.v[1], src.v[2]);
       dst.hp = src.hp;
     });
 
     syncList(world.pods.list, s.pods || [], (dst, src) => {
-      if (!dst.position) { dst.position = new THREE.Vector3(); dst.spin = { x: 0, y: 0, z: 0 }; dst.dead = false; dst.radius = K.pods.radius; }
-      dst.position.set(src.p[0], src.p[1], src.p[2]);
+      if (!dst.position) {
+        dst.position = new THREE.Vector3(src.p[0], src.p[1], src.p[2]);
+        dst.tpos = dst.position.clone();
+        dst.spin = { x: 0, y: 0, z: 0 }; dst.dead = false; dst.radius = K.pods.radius;
+      }
+      dst.tpos.set(src.p[0], src.p[1], src.p[2]);
       dst.hp = src.hp;
     });
     world.pods.centroid.set(0, 0, 0);
-    for (const p of world.pods.list) world.pods.centroid.add(p.position);
+    for (const p of world.pods.list) world.pods.centroid.add(p.tpos);
     if (world.pods.list.length) world.pods.centroid.multiplyScalar(1 / world.pods.list.length);
 
     syncList(world.bonuses.list, s.bonuses || [], (dst, src) => {
-      if (!dst.position) { dst.position = new THREE.Vector3(); dst._t = Math.random() * 6; dst.dead = false; dst.life = 999; }
+      if (!dst.position) {
+        dst.position = new THREE.Vector3(src.p[0], src.p[1], src.p[2]);
+        dst.tpos = dst.position.clone();
+        dst._t = Math.random() * 6; dst.dead = false; dst.life = 999;
+      }
       dst.kind = src.k;
-      dst.position.set(src.p[0], src.p[1], src.p[2]);
+      dst.tpos.set(src.p[0], src.p[1], src.p[2]);
     });
 
     // projectiles: server sends the live ones by pool index
@@ -350,6 +379,25 @@ function runOnline({ ws, welcome }, { mode }) {
       pr.kind[i] = q.kd;
       pr.own[i] = q.o || '';
       pr.ttl[i] = 1;
+    }
+  }
+
+  // ease every remote entity's render pose toward its latest server pose so
+  // the ~30 Hz snapshot cadence doesn't read as a vibration. ~60 ms time
+  // constant — enough to smooth the steps, little enough lag to still aim.
+  function interpRemote(dt) {
+    const a = 1 - Math.exp(-dt / 0.06);
+    for (const e of world.fleet.list) {
+      if (e.tpos) e.position.lerp(e.tpos, a);
+      if (e.tquat) e.quaternion.slerp(e.tquat, a);
+    }
+    for (const p of world.pods.list) if (p.tpos) p.position.lerp(p.tpos, a);
+    for (const b of world.bonuses.list) if (b.tpos) b.position.lerp(b.tpos, a);
+    for (let i = 0; i < otherMeshes.length; i++) {
+      const o = world.others[i], m = otherMeshes[i];
+      if (!o || !m) continue;
+      if (o.tpos) { m.position.lerp(o.tpos, a); o.position.copy(m.position); }
+      if (o.tquat) m.quaternion.slerp(o.tquat, a);
     }
   }
 
@@ -379,6 +427,7 @@ function runOnline({ ws, welcome }, { mode }) {
     const pr = world.projectiles;
     for (let i = 0; i < pr.max; i++) pr.age[i] = pr.ttl[i] > 0 ? pr.age[i] + dt : 0;
 
+    interpRemote(dt);
     enemies.update(dt);
     pods.update(dt);
     bonuses.update(dt);
@@ -463,8 +512,8 @@ function makeProjStore(max, selfId) {
 }
 
 // reuse dst objects across snapshots (mesh diffing is by identity), matching
-// by array index. Spawns/deaths shift indices — good enough for M2.5a; stable
-// ids come in M2.5b.
+// by array index. Fine for pods/bonuses where every mesh of a kind is
+// identical; enemies use syncById so a mid-list death can't repaint survivors.
 function syncList(dst, src, apply) {
   for (let i = 0; i < src.length; i++) {
     if (!dst[i]) dst[i] = {};
@@ -472,4 +521,26 @@ function syncList(dst, src, apply) {
     apply(dst[i], src[i]);
   }
   dst.length = src.length;
+}
+
+// match src[].id to a persistent state object so a given entity keeps the
+// same object — and therefore the same mesh — for its whole life. `dst` is
+// mutated in place (same array ref the render wrapper holds). apply(o, src,
+// isNew).
+function syncById(dst, src, apply) {
+  const byId = dst._byId || (dst._byId = new Map());
+  const seen = new Set();
+  const next = [];
+  for (const src1 of src) {
+    let o = byId.get(src1.id);
+    const isNew = !o;
+    if (isNew) { o = {}; byId.set(src1.id, o); }
+    o.dead = false;
+    seen.add(src1.id);
+    apply(o, src1, isNew);
+    next.push(o);
+  }
+  for (const id of byId.keys()) if (!seen.has(id)) byId.delete(id);
+  dst.length = 0;
+  for (const o of next) dst.push(o);
 }

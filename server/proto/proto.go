@@ -93,6 +93,7 @@ type ShipS struct {
 }
 
 type EnemyS struct {
+	ID   int     `json:"id"` // stable per-arena handle; the client matches on this, not list position
 	Type string  `json:"t"`
 	Pos  Vec3    `json:"p"`
 	Vel  Vec3    `json:"v"`
