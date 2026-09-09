@@ -124,6 +124,16 @@ func (w *World) aimShip(from Vec3) *Ship {
 	return best
 }
 
+// applyBonus — the server-side effect of a collected pod (client/sp.js does
+// this for SP; the co-op server owns hull/missiles so it does it here).
+func applyBonus(s *Ship, kind string, k *Constants) {
+	if kind == "repair" {
+		s.Hull = math.Min(s.MaxHull, s.Hull+k.Bonuses["repairAmount"])
+	} else {
+		s.Missiles = int(math.Min(k.Player.MaxMissiles, float64(s.Missiles)+k.Bonuses["missileAmount"]))
+	}
+}
+
 // StepWorld advances the shared world by dt seconds and returns its events.
 func (w *World) StepWorld(dt float64) []Event {
 	var events []Event
@@ -138,13 +148,35 @@ func (w *World) StepWorld(dt float64) []Event {
 	// 2. pods
 	stepPods(w.Pods, dt)
 
-	// 3. bonuses
+	// 3. bonuses. stepBonuses runs the cadence/drift and the focus ship's
+	// pickup; sweep the rest here so any co-op player can grab one. Unlike SP
+	// (where client/sp.js applies the effect on the event) the server owns the
+	// hull/missiles, so it heals the ship that actually touched the pod.
 	around := w.Ship.Pos
 	if len(w.Pods.List) > 0 {
 		around = w.Pods.Centroid
 	}
 	if kind := stepBonuses(w.Bonuses, w.Ship, around, dt, w.K.Bonuses, w.Rng); kind != "" {
+		applyBonus(w.Ship, kind, w.K)
 		events = append(events, Event{Kind: "bonusPicked", Bonus: kind})
+	}
+	if len(w.Ships) > 1 {
+		for _, bo := range w.Bonuses.List {
+			if bo.Dead {
+				continue
+			}
+			for _, sh := range w.Ships {
+				if sh == w.Ship || !sh.Alive {
+					continue
+				}
+				if bo.Position.DistanceToSq(sh.Pos) < bo.Radius*bo.Radius {
+					bo.Dead = true
+					applyBonus(sh, bo.Kind, w.K)
+					events = append(events, Event{Kind: "bonusPicked", Bonus: bo.Kind})
+					break
+				}
+			}
+		}
 	}
 
 	// 4. ram + pod strikes (the old loop guarded these with simDt > 0)
@@ -160,9 +192,17 @@ func (w *World) StepWorld(dt float64) []Event {
 	// 5. projectiles
 	events = append(events, w.Projectiles.Step(dt, w)...)
 
-	// 6. level win / lose
+	// 6. level win / lose — runs while ANY player ship is alive (a dead co-op
+	// player is respawning, not game-over)
+	anyAlive := false
+	for _, sh := range w.shipList() {
+		if sh.Alive {
+			anyAlive = true
+			break
+		}
+	}
 	gate := 0.0
-	if dt > 0 && w.Ship.Alive {
+	if dt > 0 && anyAlive {
 		gate = dt
 	}
 	if act, ok := stepLevelFSM(w.FSM, len(w.Pods.List), fleetCleared(w.Fleet), w.Fleet.Level, gate); ok {

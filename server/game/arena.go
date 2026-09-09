@@ -14,6 +14,8 @@ const (
 	snapEvery  = 2 // send a snapshot every N sim ticks (~30 Hz)
 	tickDT     = 1.0 / float64(tickHz)
 	outboxSize = 64
+
+	respawnDelay = 3.0 // seconds a dead co-op player waits before coming back
 )
 
 // Player is one connected client inside an arena.
@@ -31,6 +33,7 @@ type Player struct {
 	mslTarget int // enemy index the client locked, -1 = none
 	gunCd     float64
 	mslCd     float64
+	respawnCd float64 // >0 while dead and counting down to respawn
 }
 
 func (p *Player) send(b []byte) {
@@ -189,8 +192,26 @@ func (a *Arena) step() {
 
 	// integrate every ship from its input, then resolve its fire
 	a.world.Ships = a.world.Ships[:0]
-	for _, id := range a.order {
+	for i, id := range a.order {
 		p := a.players[id]
+
+		// dead player: count down, then respawn just this one — the others
+		// keep playing (co-op doesn't wait for the level to end).
+		if !p.Ship.Alive {
+			if p.respawnCd <= 0 {
+				p.respawnCd = respawnDelay
+			}
+			if p.respawnCd -= tickDT; p.respawnCd <= 0 {
+				resetShip(p.Ship, a.k)
+				p.Ship.Pos = spawnSlot(i)
+				p.Ship.Invuln = a.k.Player.InvulnOnRespawn
+				p.respawnCd = 0
+			}
+			a.world.Ships = append(a.world.Ships, p.Ship) // dead ships are skipped by the Alive checks
+			continue
+		}
+		p.respawnCd = 0
+
 		// grace + hit-pulse decay — client/player.js does this in its flight
 		// step; the server had no equivalent, so a reset ship stayed invuln
 		// forever and never took a hit.

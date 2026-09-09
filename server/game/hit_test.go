@@ -99,6 +99,86 @@ func TestArenaInvulnDecaysAndHitsLand(t *testing.T) {
 	}
 }
 
+// A dead co-op player respawns on its own after respawnDelay; the others
+// keep playing and the level does not restart.
+func TestArenaIndependentRespawn(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-respawn", "coop", "rs-seed")
+	a.world.StartWorldLevel(1, int(k.Pods["perLevel"]))
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+
+	p2.Ship.Alive = false
+	p2.Ship.Hull = 0
+	lvl := a.world.Fleet.Level
+	p1Hull := p1.Ship.Hull
+
+	revived := false
+	for i := 0; i < int(respawnDelay/tickDT)+40; i++ {
+		a.step()
+		if p2.Ship.Alive {
+			revived = true
+			break
+		}
+	}
+	if !revived {
+		t.Fatalf("dead player never respawned after %.1fs", respawnDelay)
+	}
+	if p2.Ship.Hull != p2.Ship.MaxHull {
+		t.Fatalf("respawned hull = %v, want %v", p2.Ship.Hull, p2.Ship.MaxHull)
+	}
+	if p2.Ship.Invuln <= 0 {
+		t.Fatalf("respawn gave no spawn grace")
+	}
+	if a.world.Fleet.Level != lvl {
+		t.Fatalf("level restarted (%d -> %d) on a single respawn", lvl, a.world.Fleet.Level)
+	}
+	if !p1.Ship.Alive || p1.Ship.Hull != p1Hull {
+		t.Fatalf("the other player was disturbed: alive=%v hull=%v", p1.Ship.Alive, p1.Ship.Hull)
+	}
+}
+
+// In co-op the server owns hull/missiles, so a collected pod has to heal the
+// ship server-side (SP does it client-side). Both the focus ship and a
+// second ship must be able to pick one up.
+func TestCoopBonusHealsCollector(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repair := k.Bonuses["repairAmount"]
+
+	heal := func(onSecond bool) float64 {
+		w := NewWorld(k, "bonus-seed")
+		s1 := w.Ship
+		s1.Hull = 20
+		s2 := &Ship{Alive: true, Hull: 20, MaxHull: k.Player.MaxHull, Pos: Vec3{X: 5000}}
+		w.Ships = []*Ship{s1, s2}
+		target := s1
+		if onSecond {
+			target = s2
+		}
+		w.Bonuses.List = append(w.Bonuses.List, &Bonus{
+			Kind: "repair", Position: target.Pos, Radius: k.Bonuses["radius"], Life: 20,
+		})
+		w.Bonuses.Timer = 999 // no new spawn this tick
+		w.StepWorld(1.0 / 60)
+		return target.Hull
+	}
+
+	if got := heal(false); got <= 20 {
+		t.Fatalf("focus ship not healed by a bonus: hull %v", got)
+	} else if got != math.Min(k.Player.MaxHull, 20+repair) {
+		t.Fatalf("focus ship heal = %v, want %v", got, 20+repair)
+	}
+	if got := heal(true); got != math.Min(k.Player.MaxHull, 20+repair) {
+		t.Fatalf("second ship heal = %v, want %v", got, 20+repair)
+	}
+}
+
 // A second player (not a.order[0]) must also be shot at / rammable — enemy
 // resolution used to only ever see the focus ship.
 func TestArenaSecondPlayerIsVulnerable(t *testing.T) {

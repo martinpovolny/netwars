@@ -327,7 +327,10 @@ function runOnline({ ws, welcome }, { mode }) {
 
       const err = player.position.distanceTo(_recon.position);
       if (err > 200) {
-        camErr.set(0, 0, 0);            // respawn / gross desync — snap the view too
+        // respawn / gross desync — snap hard; the logged inputs describe the
+        // old trajectory and must not replay onto the new anchor next time
+        camErr.set(0, 0, 0);
+        inputLog.length = 0;
       } else {
         camErr.add(player.position).sub(_recon.position);
         const m = camErr.length();
