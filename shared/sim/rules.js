@@ -1,8 +1,14 @@
 // Pod + bonus simulation — shared by the SP client and the Go server.
 // Pure: operates on plain state ({position, velocity, ...}). Spin / pulse /
-// meshes are the render layer's job. RNG is Math.random for now; M2 swaps in a
-// seeded xorshift so the server is deterministic.
+// meshes are the render layer's job.
+//
+// Every function that draws randomness takes `rng` last, defaulting to
+// Math.random. `randomDir(rng, v)` reproduces THREE's `v.randomDirection()`
+// draw-for-draw, so with the default the RNG stream — and therefore SP — is
+// exactly as before. A seeded rng (from session_id) makes the server / MP
+// clients generate the identical world.
 import { Vector3 } from './vec.js';
+import { randomDir } from './rng.js';
 
 // ---------------------------------------------------------------- pods -------
 
@@ -10,17 +16,17 @@ import { Vector3 } from './vec.js';
 // podState: { position, velocity, spin, hp, radius, dead, captor }
 // `spin` is a visual-tumble vector kept on the state so RNG order matches the
 // original exactly; the server just doesn't stream it.
-export function spawnPods(count, around, K) {
+export function spawnPods(count, around, K, rng = Math.random) {
   const list = [];
   for (let i = 0; i < count; i++) {
     const spin = new Vector3(
-      (Math.random() - 0.5) * K.spinRange,
-      (Math.random() - 0.5) * K.spinRange,
-      (Math.random() - 0.5) * K.spinRange,
+      (rng() - 0.5) * K.spinRange,
+      (rng() - 0.5) * K.spinRange,
+      (rng() - 0.5) * K.spinRange,
     );
     list.push({
-      position: new Vector3().randomDirection().multiplyScalar(K.spawnMin + Math.random() * K.spawnRange).add(around),
-      velocity: new Vector3().randomDirection().multiplyScalar(K.driftMin + Math.random() * K.driftRange),
+      position: randomDir(rng, new Vector3()).multiplyScalar(K.spawnMin + rng() * K.spawnRange).add(around),
+      velocity: randomDir(rng, new Vector3()).multiplyScalar(K.driftMin + rng() * K.driftRange),
       spin,
       hp: K.hp,
       radius: K.radius,
@@ -53,19 +59,19 @@ export function stepPods(pods, dt) {
 
 // bonuses: { list:[bonusState], timer, maxAlive }
 // bonusState: { kind:'missiles'|'repair', position, velocity, radius, life, dead, _collected }
-function spawnBonus(bonuses, around, player, K) {
+function spawnBonus(bonuses, around, player, K, rng) {
   const wantRepair = player.hull < player.maxHull * K.wantRepairBelow;
   const wantMsl = player.missiles < player.maxMissiles * K.wantMissilesBelow;
   let kind;
   if (wantRepair && !wantMsl) kind = 'repair';
   else if (wantMsl && !wantRepair) kind = 'missiles';
-  else kind = Math.random() < 0.5 ? 'repair' : 'missiles';
+  else kind = rng() < 0.5 ? 'repair' : 'missiles';
 
   bonuses.list.push({
     kind,
-    _t: Math.random() * 6,        // visual phase (RNG order matches the original)
-    position: new Vector3().randomDirection().multiplyScalar(K.spawnMin + Math.random() * K.spawnRange).add(around),
-    velocity: new Vector3().randomDirection().multiplyScalar(K.driftMin + Math.random() * K.driftRange),
+    _t: rng() * 6,        // visual phase (RNG order matches the original)
+    position: randomDir(rng, new Vector3()).multiplyScalar(K.spawnMin + rng() * K.spawnRange).add(around),
+    velocity: randomDir(rng, new Vector3()).multiplyScalar(K.driftMin + rng() * K.driftRange),
     radius: K.radius,
     life: K.life,
     dead: false,
@@ -83,13 +89,13 @@ export function bonusHitByShot(bonuses, pos) {
 }
 
 // returns { kind } for a bonus collected this step, or null
-export function stepBonuses(bonuses, player, around, dt, K) {
+export function stepBonuses(bonuses, player, around, dt, K, rng = Math.random) {
   let collected = null;
 
   bonuses.timer -= dt;
   if (bonuses.timer <= 0 && bonuses.list.length < K.maxAlive) {
-    bonuses.timer = K.respawnMin + Math.random() * K.respawnRange;
-    spawnBonus(bonuses, around, player, K);
+    bonuses.timer = K.respawnMin + rng() * K.respawnRange;
+    spawnBonus(bonuses, around, player, K, rng);
   }
 
   for (const b of bonuses.list) {
@@ -108,8 +114,8 @@ export function stepBonuses(bonuses, player, around, dt, K) {
   return collected;
 }
 
-export function makeBonuses(K) {
-  return { list: [], timer: K.firstDelayMin + Math.random() * K.firstDelayRange, maxAlive: K.maxAlive };
+export function makeBonuses(K, rng = Math.random) {
+  return { list: [], timer: K.firstDelayMin + rng() * K.firstDelayRange, maxAlive: K.maxAlive };
 }
 
 // --------------------------------------------------------- level FSM -------

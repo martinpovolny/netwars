@@ -59,17 +59,17 @@ export function range(rng, min, max) {
   return min + (max - min) * rng();
 }
 
-// A unit vector, uniform on the sphere. This is byte-for-byte
-// THREE.Vector3.randomDirection() — same two draws in the same order, same
-// axis mapping — so `randomDir(Math.random, v)` == `v.randomDirection()`.
-// Passing a seeded rng makes it reproducible for the server. Writes into
-// `out` ({x,y,z}) and returns it.
+// A unit vector, uniform on the sphere. Byte-for-byte THREE 0.169's
+// Vector3.randomDirection() — same two draws in the same order (theta, then
+// u), same axis mapping (y = u) — so `randomDir(Math.random, v)` is identical
+// to `v.randomDirection()`. Passing a seeded rng makes it reproducible for
+// the server. Writes into `out` ({x,y,z}) and returns it.
 export function randomDir(rng, out) {
-  const r = rng() * Math.PI * 2;
-  const z = rng() * 2 - 1;
-  const zScale = Math.sqrt(1 - z * z);
-  out.x = Math.cos(r) * zScale;
-  out.y = Math.sin(r) * zScale;
-  out.z = z;
+  const theta = rng() * Math.PI * 2;
+  const u = rng() * 2 - 1;
+  const c = Math.sqrt(1 - u * u);
+  out.x = c * Math.cos(theta);
+  out.y = u;
+  out.z = c * Math.sin(theta);
   return out;
 }

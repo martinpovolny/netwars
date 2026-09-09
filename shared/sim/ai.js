@@ -3,6 +3,7 @@
 // Tactical constants live here as literals; the Go port keeps the same numbers
 // and the golden-vector test guards parity.
 import { Vector3, Quaternion } from './vec.js';
+import { randomDir } from './rng.js';
 
 const FWD = new Vector3(0, 0, -1);
 const UP = new Vector3(0, 1, 0);
@@ -13,6 +14,12 @@ const _d = new Vector3();
 const _q = new Quaternion();
 const _side = new Vector3();
 const _lead = new Vector3();
+
+// RNG for this tick — set from ctx.rng at the top of stepEnemy so the
+// behaviour helpers can draw from the same (seeded, for MP) source. Defaults
+// to Math.random, and randomDir() mirrors THREE.randomDirection draw-for-draw,
+// so SP's stream is unchanged.
+let _rng = Math.random;
 
 // enemy bolt muzzle speed (world units/s) — used for both the shot and the
 // intercept solve so the lead is consistent
@@ -80,7 +87,7 @@ function tryFire(e, dt, targetPos, ctx, aimDot = 0.985, targetVel = null) {
   if (aimDot > -1 && _f.dot(_d) < aimDot) return;
 
   const g = e.stats.fireGap;
-  e.fireCd = g[0] + Math.random() * (g[1] - g[0]);
+  e.fireCd = g[0] + _rng() * (g[1] - g[0]);
   const v = _d.clone().multiplyScalar(ENEMY_BOLT_SPEED).addScaledVector(e.velocity, 0.4);
   ctx.weapons.spawn(e.position.clone().addScaledVector(_d, e.radius + 4), v, 'enemy', 3.2);
   ctx.fx?.enemyLaser?.();
@@ -122,9 +129,9 @@ function strafer(e, dt, ctx) {
     if (dist < 240 || e.stateT > 5) {
       e.state = 'break';
       e.stateT = 0;
-      const off = new Vector3().randomDirection();
+      const off = randomDir(_rng, new Vector3());
       off.y = off.y * 0.5 + 0.2;
-      e.movePos.copy(e.aimPos).addScaledVector(off.normalize(), 700 + Math.random() * 400);
+      e.movePos.copy(e.aimPos).addScaledVector(off.normalize(), 700 + _rng() * 400);
     }
   } else {
     const bd = _d.copy(e.movePos).sub(e.position);
@@ -136,9 +143,9 @@ function strafer(e, dt, ctx) {
 }
 
 function pickPerch(e, player) {
-  const off = new Vector3().randomDirection();
+  const off = randomDir(_rng, new Vector3());
   off.y = off.y * 0.5 + 0.25;
-  e.perch.copy(player.position).addScaledVector(off.normalize(), 1000 + Math.random() * 500);
+  e.perch.copy(player.position).addScaledVector(off.normalize(), 1000 + _rng() * 500);
 }
 
 function sniper(e, dt, ctx) {
@@ -161,7 +168,7 @@ function sniper(e, dt, ctx) {
     if (dd < 130 && e.velocity.length() < 55) {
       e.state = 'hold';
       e.stateT = 0;
-      e.holdFor = 3.5 + Math.random() * 2.5;
+      e.holdFor = 3.5 + _rng() * 2.5;
     }
   } else {
     // hold the perch and track the intercept, not the player's current spot
@@ -223,9 +230,10 @@ function thief(e, dt, ctx) {
   }
 }
 
-// one AI tick for one enemy
+// one AI tick for one enemy. ctx: { player, pods, weapons, fx, rng? }
 export function stepEnemy(e, ctx, dt) {
   const { player, pods } = ctx;
+  _rng = ctx.rng || Math.random;
   e.repick -= dt;
 
   if (e.stats.target === 'player') {
@@ -233,7 +241,7 @@ export function stepEnemy(e, ctx, dt) {
   } else if (e.behavior !== 'thief') {
     if (e.repick <= 0 || !e._targetPod || e._targetPod.dead) {
       e._targetPod = nearestPod(e.position, pods);
-      e.repick = 2 + Math.random() * 2;
+      e.repick = 2 + _rng() * 2;
     }
     e.aimPos.copy(e._targetPod ? e._targetPod.position : player.position);
   }
