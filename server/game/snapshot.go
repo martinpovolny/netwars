@@ -72,6 +72,7 @@ func EventsToProto(evs []Event) []proto.EventS {
 		if e.Kind == "level" {
 			pe.Flash = e.Action.Flash
 			pe.Hold = e.Action.Hold
+			pe.Start = e.Action.StartLevel != 0
 		}
 		out = append(out, pe)
 	}

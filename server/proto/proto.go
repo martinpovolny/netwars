@@ -146,6 +146,9 @@ type EventS struct {
 	Bonus    string  `json:"bonus,omitempty"`
 	Flash    string  `json:"flash,omitempty"`
 	Hold     float64 `json:"hold,omitempty"`
+	// level events: Start marks the actual (re)start tick (vs the earlier
+	// won/lost banner) so the client resets its ship exactly once.
+	Start bool `json:"start,omitempty"`
 }
 
 type EventBatch struct {

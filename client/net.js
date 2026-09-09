@@ -267,8 +267,11 @@ function runOnline({ ws, welcome }, { mode }) {
       case 'podHit': explosions.spark(pos); break;
       case 'podKill': explosions.blast(pos, 0xff5ad0); audio.boom(); hud.flash('POD DOWN', 1.0); break;
       case 'level':
+        // two events cross a transition: the won/lost banner (has flash) and
+        // the actual (re)start (has start). Only the restart resets the ship —
+        // resetting on the banner too was the visible "screen resets twice".
         if (ev.flash) hud.flash(ev.flash, ev.hold || 2.5);
-        player.reset();
+        if (ev.start) player.reset();
         break;
     }
   }
