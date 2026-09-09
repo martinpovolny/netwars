@@ -5,7 +5,6 @@ export class HUD {
     this.score = document.getElementById('score');
     this.missiles = document.getElementById('missiles');
     this.vel = document.getElementById('vel-fill');
-    this.shd = document.getElementById('shd-fill');
     this.msg = document.getElementById('msg');
     this.dead = document.getElementById('dead');
     this.deadSub = document.getElementById('dead-sub');
@@ -53,9 +52,8 @@ export class HUD {
     this.missiles.textContent = player.missiles;
     this.vel.style.height = Math.min(100, 100 * player.speed() / player.maxSpeed) + '%';
 
-    // hull: bottom-left S gauge + a top bar that only shows when damaged
+    // hull: a top bar that only shows when damaged (+ the hit vignette)
     const hp = player.hull / player.maxHull;
-    this.shd.style.height = (100 * hp) + '%';
     const damaged = player.alive && hp < 0.999;
     this.hpbar.style.display = damaged ? 'block' : 'none';
     if (damaged) {
