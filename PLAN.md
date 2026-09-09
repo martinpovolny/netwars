@@ -5,11 +5,13 @@ they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
 **Status:** M0 + M1 merged & deployed to `www.hmpf.cz/netwars/`. Follow-ups
 also in: mote polish, real HYG star catalogue, leading enemy fire.
-**M2 (Go server, co-op) in progress — `m2-world` branch. M2.1–M2.4 + M2.7
-done: `stepWorld` consolidated + parity-verified; `shared/sim` ported to Go
-(golden parity green); ws transport + arena loop **deployed live** at
-`netwars.hmpf.cz` (binary serves the game on `/` too). M2.5 next — real
-`client/net.js`. M2.6 — N-ship authority. M2.8 — 2-player co-op test.**
+**M2 (Go server, co-op) — `m2-world` branch. Done: `stepWorld` consolidated
++ parity-verified; `shared/sim` ported to Go (golden parity green); ws
+transport + arena **deployed live** at `netwars.hmpf.cz` (binary serves the
+game on `/`); `client/net.js` (M2.5a) — co-op connects, 2 tabs share a
+session and see each other + the AI world. Next: M2.5b (prediction
+reconcile + interpolation), M2.6 (N-ship authority), M2.8 (real 2-player
+internet test).**
 
 ---
 
@@ -170,13 +172,17 @@ manual one-off; not part of build or CI.)
       advances, ackSeq tracks input, fleet moves, cannon fire lands,
       ping↔pong, arena tears down on leave. `StepWorld` still targets one
       focus ship — N-ship authority is M2.6.
-- [ ] **M2.5** `client/net.js` real impl (replaces the stub): parse
-      `#session?server_id&mode`, open `wss://<server_id>/ws`, `hello` →
-      `welcome` seeds a local `World`; each frame send `input` (seq+t) and
-      predict own ship via `stepShip`; on `snapshot` push to a ~120 ms interp
-      buffer, reconcile own ship to `ackSeq`, interpolate everyone else; on
-      `event` play the same FX/HUD handlers SP uses. Connect failure →
-      `import('./sp.js')`. SP path still never loads this file.
+- [~] **M2.5a** *(m2-world: 026db43)* `client/net.js` real: resolve server
+      (URL `server_id` or `location.host`; wss/ws by page proto), `hello`
+      handshake w/ timeout, mirrored `world` fed by `snapshot` (index-matched,
+      state objects reused for stable mesh diffing), local ship predicted via
+      `player.update` (fire disabled — server owns spawns), `input` frames
+      (seq+t+control+fire), `event` batch → same FX/HUD as sp.js, other
+      players rendered from `others`. No-hash → sp.js; connect fail → sp.js.
+      Verified: 2 tabs share a session + see each other + the AI world.
+- [ ] **M2.5b** client prediction reconcile against `ackSeq`; ~120 ms
+      interpolation buffer for remote entities; stable entity ids; per-class
+      HUD goals in the snapshot; RTT overlay from ping/pong.
 - [ ] **M2.6** Authority / co-op: arena holds N player ships, server
       integrates each from its inputs and owns all shared state; clients
       predict own + interpolate others; ≥ 2 humans share one pod defence,
