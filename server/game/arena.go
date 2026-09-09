@@ -85,6 +85,18 @@ func newShip(k *Constants) *Ship {
 	}
 }
 
+// resetShip — the Go twin of client/player.js#reset (level (re)start).
+func resetShip(s *Ship, k *Constants) {
+	s.Pos = Vec3{}
+	s.Vel = Vec3{}
+	s.Quat = Quat{0, 0, 0, 1}
+	s.Hull = s.MaxHull
+	s.Missiles = int(s.MaxMissiles)
+	s.HitPulse = 0
+	s.Invuln = k.Player.InvulnOnReset
+	s.Alive = true
+}
+
 func (a *Arena) run(ctx context.Context) {
 	a.world.StartWorldLevel(1, int(a.k.Pods["perLevel"]))
 	sim := time.NewTicker(time.Second / tickHz)
@@ -168,6 +180,17 @@ func (a *Arena) step() {
 		a.world.Ship = a.players[a.order[0]].Ship
 	}
 	evs := a.world.StepWorld(tickDT)
+
+	// the FSM asks for a level (re)start — do it here, the arena's job (the
+	// SP client does the same in its frame loop). Respawn every ship.
+	for _, ev := range evs {
+		if ev.Kind == "level" && ev.Action.StartLevel != 0 {
+			for _, id := range a.order {
+				resetShip(a.players[id].Ship, a.k)
+			}
+			a.world.StartWorldLevel(ev.Action.StartLevel, int(a.k.Pods["perLevel"]))
+		}
+	}
 
 	if pe := EventsToProto(evs); pe != nil {
 		b := proto.Marshal(proto.EventBatch{Type: proto.TypeEvent, Tick: a.tick, Events: pe})

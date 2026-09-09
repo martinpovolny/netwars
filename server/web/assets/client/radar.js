@@ -109,7 +109,7 @@ export class Radar {
     for (const e of enemies.list) if (!e.dead) feed(e, 0xff5555, 0xff1010, 500);
     for (const p of pods.list) if (!p.dead) feed(p, 0xd93bd0, 0xd93bd0, 0);
     if (bonuses) for (const b of bonuses.list) if (!b.dead) feed(b, b.kind === 'repair' ? 0x2fe06a : 0x3ad0ff, 0xffffff, 0);
-    if (others) for (const o of others) if (o.alive !== false) feed(o, 0x35e0d0, 0x35e0d0, 0);
+    if (others) for (const o of others) if (o.alive !== false) feed(o, o.color || 0xffb020, o.color || 0xffb020, 0);
 
     for (; i < this.blips.length; i++) {
       this.blips[i].cube.visible = false;

@@ -120,19 +120,23 @@ function runOnline({ ws, welcome }, { mode }) {
   bonuses.attach(world.bonuses);
   weapons.attach(world.projectiles);
 
-  // other players' ships — a diff-rendered mesh + a radar-facing {position}
-  // record per remote ship
+  // other players' ships — a diff-rendered mesh + a radar-facing record per
+  // remote ship. Each gets a distinct hue (NOT red — that reads as an enemy;
+  // NOT green — that's you): amber, then teal / pink / violet for a crowd.
+  const OTHER_COLORS = [0xffb020, 0x35e0d0, 0xff5ad0, 0x9b6bff];
   const otherMeshes = [];
   function syncOthers(list) {
     for (let i = 0; i < list.length; i++) {
-      if (!otherMeshes[i]) { const m = makeDart(0x35e0d0, 1); scene.add(m); otherMeshes[i] = m; }
-      if (!world.others[i]) world.others[i] = { position: new THREE.Vector3(), alive: true };
+      const color = OTHER_COLORS[i % OTHER_COLORS.length];
+      if (!otherMeshes[i]) { const m = makeDart(color, 1); scene.add(m); otherMeshes[i] = m; }
+      if (!world.others[i]) world.others[i] = { position: new THREE.Vector3(), alive: true, color };
       const o = list[i], m = otherMeshes[i];
       m.visible = o.alive;
       m.position.set(o.p[0], o.p[1], o.p[2]);
       m.quaternion.set(o.q[0], o.q[1], o.q[2], o.q[3]);
       world.others[i].position.set(o.p[0], o.p[1], o.p[2]);
       world.others[i].alive = o.alive;
+      world.others[i].color = color;
     }
     for (let i = list.length; i < otherMeshes.length; i++) scene.remove(otherMeshes[i]);
     otherMeshes.length = list.length;
