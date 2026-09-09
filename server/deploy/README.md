@@ -40,7 +40,10 @@ ssh vpn-ora-m 'curl -s localhost:8080/healthz'    # -> ok arenas=0
 ```
 
 The unit runs as a transient `DynamicUser`, loopback-only, no capabilities;
-constants are embedded so there are no data files.
+constants are embedded so there are no data files. The binary goes to
+`/usr/local/bin/netwars-server` (always world-traversable — a `700`
+`/opt/...` dir under a `077` root umask is what gives `DynamicUser` a
+`203/EXEC`).
 
 ### 4. Caddy
 

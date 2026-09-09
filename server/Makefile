@@ -11,7 +11,7 @@
 
 # ssh target: a ~/.ssh/config alias, or user@host  (override: make deploy SSH=...)
 SSH ?= vpn-ora-m
-REMOTE_DIR ?= /opt/netwars
+REMOTE_BIN ?= /usr/local/bin/netwars-server
 PUBLIC_URL ?= https://netwars.hmpf.cz
 BIN := netwars-server
 ARM := $(BIN)-linux-arm64
@@ -39,9 +39,8 @@ build-arm64:
 	@command -v shasum >/dev/null && shasum -a 256 $(ARM) || sha256sum $(ARM)
 
 upload: build-arm64
-	ssh $(SSH) 'sudo mkdir -p $(REMOTE_DIR)'
 	scp $(ARM) $(SSH):/tmp/$(BIN).new
-	ssh $(SSH) 'sudo mv /tmp/$(BIN).new $(REMOTE_DIR)/$(BIN) && sudo chmod +x $(REMOTE_DIR)/$(BIN)'
+	ssh $(SSH) 'sudo install -m 0755 -o root -g root /tmp/$(BIN).new $(REMOTE_BIN) && rm -f /tmp/$(BIN).new'
 
 deploy: vet test upload restart
 	@sleep 1
