@@ -26,15 +26,25 @@ let _rng = Math.random;
 const ENEMY_BOLT_SPEED = 950;
 
 // Where to aim so a bolt of speed ENEMY_BOLT_SPEED meets a target at `tpos`
-// moving at `tvel`. Two fixed-point iterations from the straight-line time
-// estimate — plenty at combat ranges, and branch-light for the Go port.
-// Writes the predicted world position into `out` and returns it.
+// moving at `tvel`. Exact closed form: with d = tpos - from and s the bolt
+// speed, solve |d + tvel·t| = s·t, i.e. the quadratic
+//   (|tvel|² - s²)·t² + 2(d·tvel)·t + |d|² = 0
+// for its one positive root (a < 0 and |d|² > 0 guarantee exactly one).
+// Falls back to `tpos` if the target somehow outruns the bolt. Writes the
+// predicted world position into `out` and returns it.
 function leadPoint(from, tpos, tvel, out) {
-  out.copy(tpos).sub(from);
-  let t = out.length() / ENEMY_BOLT_SPEED;
-  for (let i = 0; i < 2; i++) {
-    out.copy(tvel).multiplyScalar(t).add(tpos).sub(from);
-    t = out.length() / ENEMY_BOLT_SPEED;
+  const dx = tpos.x - from.x, dy = tpos.y - from.y, dz = tpos.z - from.z;
+  const a = tvel.lengthSq() - ENEMY_BOLT_SPEED * ENEMY_BOLT_SPEED;
+  const b = 2 * (dx * tvel.x + dy * tvel.y + dz * tvel.z);
+  const c = dx * dx + dy * dy + dz * dz;
+  let t = 0;
+  if (a < 0) {
+    const disc = b * b - 4 * a * c;      // > 0 whenever a < 0 and c > 0
+    if (disc >= 0) {
+      const sq = Math.sqrt(disc);
+      t = Math.max((-b + sq) / (2 * a), (-b - sq) / (2 * a));
+      if (!(t > 0)) t = 0;
+    }
   }
   return out.copy(tvel).multiplyScalar(t).add(tpos);
 }

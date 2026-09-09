@@ -79,13 +79,24 @@ func nearestPod(pos Vec3, pods *Pods) *Pod {
 	return best
 }
 
-// leadPoint — writes the predicted intercept position into out, returns it.
+// leadPoint — exact closed-form intercept (twin of shared/sim/ai.js). With
+// d = tpos-from and s the bolt speed, solve |d + tvel*t| = s*t, i.e.
+// (|tvel|^2 - s^2) t^2 + 2(d.tvel) t + |d|^2 = 0, for its one positive root.
 func leadPoint(from, tpos, tvel Vec3, out *Vec3) *Vec3 {
-	out.Copy(tpos).Sub(from)
-	t := out.Length() / enemyBoltSpeed
-	for i := 0; i < 2; i++ {
-		out.Copy(tvel).MultiplyScalar(t).Add(tpos).Sub(from)
-		t = out.Length() / enemyBoltSpeed
+	dx, dy, dz := tpos.X-from.X, tpos.Y-from.Y, tpos.Z-from.Z
+	a := tvel.LengthSq() - enemyBoltSpeed*enemyBoltSpeed
+	b := 2 * (dx*tvel.X + dy*tvel.Y + dz*tvel.Z)
+	c := dx*dx + dy*dy + dz*dz
+	t := 0.0
+	if a < 0 {
+		disc := b*b - 4*a*c
+		if disc >= 0 {
+			sq := math.Sqrt(disc)
+			t = math.Max((-b+sq)/(2*a), (-b-sq)/(2*a))
+			if !(t > 0) {
+				t = 0
+			}
+		}
 	}
 	return out.Copy(tvel).MultiplyScalar(t).Add(tpos)
 }
