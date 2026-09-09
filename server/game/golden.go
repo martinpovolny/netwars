@@ -10,13 +10,13 @@ import (
 // for `Ticks` ticks off `Seed`, snapshotted every tick. game.StepWorld (M2.3)
 // must reproduce every frame within 1e-4.
 
-type Vec3 [3]float64
-type Quat [4]float64
+type jVec3 [3]float64
+type jQuat [4]float64
 
 type GoldenShip struct {
-	Pos      Vec3    `json:"pos"`
-	Vel      Vec3    `json:"vel"`
-	Quat     Quat    `json:"quat"`
+	Pos      jVec3   `json:"pos"`
+	Vel      jVec3   `json:"vel"`
+	Quat     jQuat   `json:"quat"`
 	Hull     float64 `json:"hull"`
 	Missiles int     `json:"missiles"`
 	Alive    bool    `json:"alive"`
@@ -25,9 +25,9 @@ type GoldenShip struct {
 type GoldenEnemy struct {
 	Type       string  `json:"type"`
 	Behavior   string  `json:"behavior"`
-	Pos        Vec3    `json:"pos"`
-	Vel        Vec3    `json:"vel"`
-	Quat       Quat    `json:"quat"`
+	Pos        jVec3   `json:"pos"`
+	Vel        jVec3   `json:"vel"`
+	Quat       jQuat   `json:"quat"`
 	HP         float64 `json:"hp"`
 	State      string  `json:"state"`
 	StateT     float64 `json:"stateT"`
@@ -36,7 +36,7 @@ type GoldenEnemy struct {
 }
 
 type GoldenPod struct {
-	Pos    Vec3    `json:"pos"`
+	Pos    jVec3   `json:"pos"`
 	HP     float64 `json:"hp"`
 	Dead   bool    `json:"dead"`
 	Captor bool    `json:"captor"`
@@ -44,14 +44,14 @@ type GoldenPod struct {
 
 type GoldenBonus struct {
 	Kind string  `json:"kind"`
-	Pos  Vec3    `json:"pos"`
+	Pos  jVec3   `json:"pos"`
 	Life float64 `json:"life"`
 }
 
 type GoldenProj struct {
 	I    int     `json:"i"`
-	Pos  Vec3    `json:"pos"`
-	Vel  Vec3    `json:"vel"`
+	Pos  jVec3   `json:"pos"`
+	Vel  jVec3   `json:"vel"`
 	Ttl  float64 `json:"ttl"`
 	Age  float64 `json:"age"`
 	Team string  `json:"team"`

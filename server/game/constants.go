@@ -1,10 +1,10 @@
 package game
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"maps"
 )
 
 // constants.json is a copy of ../../shared/constants.json — the single tuning
@@ -72,17 +72,77 @@ type EnemyType struct {
 	FireGap     []float64 `json:"fireGap"`
 }
 
-// Constants is the whole tuning table.
+// Constants is the whole tuning table. `levels` / `levelsBeyond` are decoded
+// with key order preserved (spawnEnemy's keys[floor(rng*len)] depends on it).
 type Constants struct {
 	Player       PlayerBlock          `json:"player"`
 	Weapons      Block                `json:"weapons"`
 	Enemy        Block                `json:"enemy"`
 	Types        map[string]EnemyType `json:"types"`
-	Levels       []map[string]int     `json:"levels"`
-	LevelsBeyond map[string][]float64 `json:"levelsBeyond"`
+	Levels       orderedLevels        `json:"levels"`
+	LevelsBeyond orderedBeyond        `json:"levelsBeyond"`
 	Pods         Block                `json:"pods"`
 	Bonuses      Block                `json:"bonuses"`
 	Sim          Block                `json:"sim"`
+}
+
+// orderedLevels is []levelGoals — one per authored level — each an ordered
+// [{type,count}] list.
+type orderedLevels [][]goalEntry
+
+func (ol *orderedLevels) UnmarshalJSON(b []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	if t, err := dec.Token(); err != nil || t != json.Delim('[') {
+		return fmt.Errorf("levels: expected array, got %v (%v)", t, err)
+	}
+	for dec.More() {
+		if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+			return fmt.Errorf("levels: expected object, got %v (%v)", t, err)
+		}
+		var lvl []goalEntry
+		for dec.More() {
+			key, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			var n int
+			if err := dec.Decode(&n); err != nil {
+				return err
+			}
+			lvl = append(lvl, goalEntry{Type: key.(string), N: n})
+		}
+		dec.Token() // '}'
+		*ol = append(*ol, lvl)
+	}
+	return nil
+}
+
+type beyondEntry struct {
+	Type      string
+	Base, Per float64
+}
+type orderedBeyond []beyondEntry
+
+func (ob *orderedBeyond) UnmarshalJSON(b []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return fmt.Errorf("levelsBeyond: expected object, got %v (%v)", t, err)
+	}
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		var pair []float64
+		if err := dec.Decode(&pair); err != nil {
+			return err
+		}
+		if len(pair) < 2 {
+			return fmt.Errorf("levelsBeyond[%s]: want [base, per]", key)
+		}
+		*ob = append(*ob, beyondEntry{Type: key.(string), Base: pair[0], Per: pair[1]})
+	}
+	return nil
 }
 
 // LoadConstants parses the embedded copy.
@@ -94,22 +154,18 @@ func LoadConstants() (*Constants, error) {
 	return &k, nil
 }
 
-// GoalsForLevel is the Go twin of shared/constants.js#goalsForLevel: the
-// authored table for early levels, then a generated escalation.
-func (k *Constants) GoalsForLevel(n int) map[string]int {
+// goalsForLevelOrdered is the Go twin of shared/constants.js#goalsForLevel,
+// preserving key order: the authored table for early levels, then a generated
+// escalation.
+func (k *Constants) goalsForLevelOrdered(n int) []goalEntry {
 	if n-1 < len(k.Levels) {
-		out := make(map[string]int, len(k.Levels[n-1]))
-		maps.Copy(out, k.Levels[n-1])
-		return out
+		return cloneGoals(k.Levels[n-1])
 	}
-	out := map[string]int{}
-	for typ, bp := range k.LevelsBeyond {
-		if len(bp) < 2 {
-			continue
-		}
-		v := int(bp[0] + bp[1]*float64(n)) // JS Math.floor on a non-negative sum
+	var out []goalEntry
+	for _, be := range k.LevelsBeyond {
+		v := int(be.Base + be.Per*float64(n)) // JS Math.floor on a non-negative sum
 		if v > 0 {
-			out[typ] = v
+			out = append(out, goalEntry{Type: be.Type, N: v})
 		}
 	}
 	return out

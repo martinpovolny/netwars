@@ -1,5 +1,7 @@
 package game
 
+import "math"
+
 // Seeded RNG — the Go twin of shared/sim/rng.js. The integer recurrence must
 // stay bit-for-bit identical: same FNV-1a seed hash, same xorshift128, same
 // float mapping (w / 2^32). Every arena seeds from its session_id so the
@@ -45,4 +47,17 @@ func (r *Rng) U32() uint32 {
 	r.x, r.y, r.z = r.y, r.z, r.w
 	r.w = r.w ^ (r.w >> 19) ^ (t ^ (t >> 8))
 	return r.w
+}
+
+// RandomDir writes a uniform unit vector into out, byte-for-byte matching
+// shared/sim/rng.js#randomDir (which mirrors THREE 0.169 randomDirection):
+// two draws — theta, then u — with y = u.
+func RandomDir(r *Rng, out *Vec3) *Vec3 {
+	theta := r.Float64() * math.Pi * 2
+	u := r.Float64()*2 - 1
+	c := math.Sqrt(1 - u*u)
+	out.X = c * math.Cos(theta)
+	out.Y = u
+	out.Z = c * math.Sin(theta)
+	return out
 }
