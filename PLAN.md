@@ -3,9 +3,9 @@
 Working checklist for the shared-core split + online multiplayer. Tick items as
 they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
-**Status:** M0 (`shared-core-split`, PR #6) + M1 (`m1-environment`, stacked)
-both complete and browser-verified — awaiting merge + production deploy.
-M2 (Go server) next.
+**Status:** M0 + M1 merged & deployed to `www.hmpf.cz/netwars/`. Follow-ups
+also in: mote polish, real HYG star catalogue, leading enemy fire.
+**M2 (Go server, co-op) in progress — `m2-world` branch, slice M2.1.**
 
 ---
 
@@ -100,22 +100,55 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
 
 ## M2 — Go server + `net.js`, co-op
 
-- [ ] Go module `server/`: `cmd/netwars-server` (flags, `go:embed`
-      constants.json, signals), `ws/conn.go` (github.com/coder/websocket,
-      read/write pumps, JSON), `proto/`, `game/session.go` (session→arena
-      registry), `game/arena.go` (60Hz tick, 25Hz snapshot, 1Hz ping goroutine),
-      `game/sim.go` (function-for-function Go port of `shared/sim`),
-      `game/snapshot.go`, `game/rng.go` (xorshift matching JS seed).
-- [ ] Authority split: server sims enemies/pods/bonuses/level/damage/score,
-      integrates player ships from client inputs; client predicts own ship,
-      interpolates the rest.
-- [ ] `client/net.js`: parse `#session?server_id&mode`, `wss://` via Caddy,
-      `hello` / `input` / `snapshot` / `event`; interpolation buffer ~120ms;
-      reconcile own ship to `ackSeq`.
-- [ ] Deploy: linux binary + systemd unit; Caddyfile
-      `netwars.hmpf.cz { reverse_proxy localhost:8080 }`; DNS.
-- [ ] **Verify**: golden-vector JS↔Go parity test (600 ticks, tol 1e-4, in CI);
-      two local browser profiles co-op; real 2-person internet co-op.
+**Hard constraint (every slice):** the no-hash SP experience
+(`client/main.js` → `sp.js`, no server) must keep playing byte-identically.
+`net.js` is only imported when `location.hash` is present; a failed connect
+falls back to `sp.js`. Each slice: committed + SP re-verified before the next.
+
+- [ ] **M2.1** `shared/sim/world.js` — pure `makeWorld()` + `stepWorld(world,
+      control, dt)` that runs one shared tick: `stepShip` (own ship) →
+      `stepEnemy` ×N → `stepPods` → `stepBonuses` → `Projectiles.step` →
+      ram / pod-strike → `stepLevelFSM`, returning an `events[]` list
+      (`bonusPicked`, `collision`, `podDown`, `levelFlash`, `startLevel`, …).
+      Move `checkRam` / `checkPodStrikes` out of `client/enemies.js` into
+      `shared/sim` as event-returning pure fns (server must own that damage).
+      `sp.js` swaps its ~15-line orchestration block for one `stepWorld` call
+      + an event switch driving `hud`/`explosions`/`audio` (client-only).
+      **Parity-verified** vs. current SP: seeded RNG, 600 ticks of varied
+      control, pos/vel/quat/hp/score/level deltas 0. No new deps.
+- [ ] **M2.2** Go module `server/` skeleton: `go.mod`
+      (`github.com/coder/websocket`), `cmd/netwars-server/main.go` (flags
+      `-addr :8080 -tick 60 -snap 25`, `go:embed ../shared/constants.json`,
+      SIGINT/TERM), `game/rng.go` (xorshift, seed behaviour matching JS),
+      stub `game/world.go`. Golden-vector harness: a Node script dumps
+      `shared/sim` state over 600 seeded ticks to `testdata/golden.json`;
+      a Go test loads + parses it (green once the port lands).
+- [ ] **M2.3** Port `shared/sim` → Go function-for-function: `flight.go`,
+      `ai.go`, `weapons.go`, `rules.go`, `world.go`. Golden-vector test
+      passes (tol 1e-4, 600 ticks). No client impact.
+- [ ] **M2.4** Transport + arena: `ws/conn.go` (coder/websocket, read/write
+      pumps, JSON frames), `proto/` (`hello`/`input`/`ping` ↔
+      `welcome`/`snapshot`/`event`/`pong`), `game/session.go` (session_id →
+      `*Arena`, create on first join, drop when empty), `game/arena.go`
+      (one goroutine: 60 Hz sim, 25 Hz snapshot broadcast, 1 Hz ping),
+      `game/snapshot.go`.
+- [ ] **M2.5** `client/net.js` real impl (replaces the stub): parse
+      `#session?server_id&mode`, open `wss://<server_id>/ws`, `hello` →
+      `welcome` seeds a local `World`; each frame send `input` (seq+t) and
+      predict own ship via `stepShip`; on `snapshot` push to a ~120 ms interp
+      buffer, reconcile own ship to `ackSeq`, interpolate everyone else; on
+      `event` play the same FX/HUD handlers SP uses. Connect failure →
+      `import('./sp.js')`. SP path still never loads this file.
+- [ ] **M2.6** Authority / co-op: arena holds N player ships, server
+      integrates each from its inputs and owns all shared state; clients
+      predict own + interpolate others; ≥ 2 humans share one pod defence,
+      both scores count, one can die/respawn while the other plays on.
+- [ ] **M2.7** Deploy: `GOOS=linux GOARCH=amd64` build, `scp`, systemd unit
+      (`Restart=on-failure`), Caddyfile `netwars.hmpf.cz { reverse_proxy
+      localhost:8080 }`, DNS `netwars.hmpf.cz` → the box.
+- [ ] **M2.8 Verify**: golden-vector JS↔Go in CI; two local browser profiles
+      co-op on `netwars.localhost` (Caddy internal CA); real 2-person
+      internet co-op with an RTT/jitter overlay.
 
 ## M3 — deathmatch
 
