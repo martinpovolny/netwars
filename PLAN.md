@@ -180,9 +180,14 @@ manual one-off; not part of build or CI.)
       integrates each from its inputs and owns all shared state; clients
       predict own + interpolate others; ≥ 2 humans share one pod defence,
       both scores count, one can die/respawn while the other plays on.
-- [ ] **M2.7** Deploy: `GOOS=linux GOARCH=amd64` build, `scp`, systemd unit
-      (`Restart=on-failure`), Caddyfile `netwars.hmpf.cz { reverse_proxy
-      localhost:8080 }`, DNS `netwars.hmpf.cz` → the box.
+- [~] **M2.7** Deploy tooling in *(m2-world: dfb8f5b)* — `server/Makefile`
+      (`build-arm64`, `install-unit`, `deploy`, `logs`, `healthz`; ssh alias
+      `vpn-ora-m`), `deploy/netwars-server.service` (hardened, loopback:8080),
+      `deploy/Caddyfile.snippet` (`netwars.hmpf.cz` → `127.0.0.1:8080`),
+      `deploy/README.md`. Box = ARM64 Oracle Cloud, static IP, Caddy on
+      80/443. **Still to do by hand:** DNS `A` record for `netwars.hmpf.cz`,
+      OCI ingress + OS firewall for 80/443, then `make install-unit && make
+      deploy && <append snippet> && make reload-caddy && make healthz`.
 - [ ] **M2.8 Verify**: `go test ./...` (golden-vector) green in CI; two local
       browser profiles co-op on `netwars.localhost` (Caddy internal CA); real
       2-person internet co-op with an RTT/jitter overlay. If a JS-only
