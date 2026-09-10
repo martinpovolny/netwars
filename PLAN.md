@@ -3,9 +3,15 @@
 Working checklist for the shared-core split + online multiplayer. Tick items as
 they land; amend freely. Design reference is `SPEC.md`; this file is the *path*.
 
-**Status:** M0 (`shared-core-split`, PR #6) + M1 (`m1-environment`, stacked)
-both complete and browser-verified — awaiting merge + production deploy.
-M2 (Go server) next.
+**Status:** M0 + M1 merged & deployed to `www.hmpf.cz/netwars/`. Follow-ups
+also in: mote polish, real HYG star catalogue, leading enemy fire.
+**M2 (Go server, co-op) — `m2-world` branch. Done: `stepWorld` consolidated
++ parity-verified; `shared/sim` ported to Go (golden parity green); ws
+transport + arena **deployed live** at `netwars.hmpf.cz` (binary serves the
+game on `/`); `client/net.js` (M2.5a) — co-op connects, 2 tabs share a
+session and see each other + the AI world. Next: M2.5b (prediction
+reconcile + interpolation), M2.6 (N-ship authority), M2.8 (real 2-player
+internet test).**
 
 ---
 
@@ -100,22 +106,104 @@ Each slice: committed + verified in-browser (SP plays identically) before the ne
 
 ## M2 — Go server + `net.js`, co-op
 
-- [ ] Go module `server/`: `cmd/netwars-server` (flags, `go:embed`
-      constants.json, signals), `ws/conn.go` (github.com/coder/websocket,
-      read/write pumps, JSON), `proto/`, `game/session.go` (session→arena
-      registry), `game/arena.go` (60Hz tick, 25Hz snapshot, 1Hz ping goroutine),
-      `game/sim.go` (function-for-function Go port of `shared/sim`),
-      `game/snapshot.go`, `game/rng.go` (xorshift matching JS seed).
-- [ ] Authority split: server sims enemies/pods/bonuses/level/damage/score,
-      integrates player ships from client inputs; client predicts own ship,
-      interpolates the rest.
-- [ ] `client/net.js`: parse `#session?server_id&mode`, `wss://` via Caddy,
-      `hello` / `input` / `snapshot` / `event`; interpolation buffer ~120ms;
-      reconcile own ship to `ackSeq`.
-- [ ] Deploy: linux binary + systemd unit; Caddyfile
-      `netwars.hmpf.cz { reverse_proxy localhost:8080 }`; DNS.
-- [ ] **Verify**: golden-vector JS↔Go parity test (600 ticks, tol 1e-4, in CI);
-      two local browser profiles co-op; real 2-person internet co-op.
+**Hard constraint (every slice):** the no-hash SP experience
+(`client/main.js` → `sp.js`, no server) must keep playing byte-identically.
+`net.js` is only imported when `location.hash` is present; a failed connect
+falls back to `sp.js`. Each slice: committed + SP re-verified before the next.
+
+**No Node in the loop.** Toolchain is Go + the browser only. The one place
+that wanted a JS runtime — generating the golden reference vector — is done
+by a one-off browser page (`tools/golden.html`) that dumps
+`server/testdata/golden.json`; it's committed, and `go test` / CI just read
+the file. Regenerate it (open the page, save) only when `shared/sim`
+changes on purpose — that's also when the Go port must be re-synced, which
+the now-failing Go test flags. (`tools/build-stars.mjs` stays a rare
+manual one-off; not part of build or CI.)
+
+- [x] **M2.1** shared world tick. *(m2-world: 5e4fb6f, fb63ae4)*
+      - **M2.1a** threaded `rng` through `rules.js` (spawnPods/makeBonuses/
+        stepBonuses) + `ai.js` (`ctx.rng`), default `Math.random`;
+        `randomDir` mirrors THREE.randomDirection draw-for-draw. Parity vs
+        origin/main: spawnPods / stepBonuses×1200 / stepEnemy×400 all Δ 0.
+      - **M2.1b** `shared/sim/enemies.js` (pure fleet: makeEnemyState,
+        makeFleet/startFleetLevel/stepFleet, checkRam/checkPodStrikes) +
+        `shared/sim/world.js` (`makeWorld` / `startWorldLevel` /
+        `stepWorld(world, dt) → events[]`, order = fleet → pods → bonuses →
+        ram → pod-strike → projectiles → FSM; `world.fx` optional client
+        side-channel). `client/enemies|pods|bonuses|weapons.js` → pure
+        diff-render wrappers (`attach()` + mesh sync only). `sp.js` swaps
+        its sim+FSM block for one `stepWorld` call + `handleWorldEvent`;
+        ship stays client-predicted (`player.update`/`stepShip`).
+        **Parity:** headless A/B (old sp.js orchestration vs stepWorld,
+        seeded LCG, 9000 ticks / 150 s incl. a level-lost restart) →
+        WORST Δ 0. Browser: 60 fps, 0 errors, restart + mesh diff-render
+        (6/6 pods, 4/4 enemies) clean.
+- [x] **M2.2** *(m2-world: 0d250bb)* `tools/golden.html` runs `stepWorld` 600
+      ticks off `makeRng('golden')` (scripted Lissajous ship + fixed cannon
+      cadence), snapshots every tick → `server/game/testdata/golden.json`
+      (committed, 1.7 MB). Go module `server/`: `game/rng.go` (xorshift128
+      twin — `rng_test.go` asserts the exact first-8 u32 for seed "golden"
+      from JS, **passes**), `game/constants.go` (`//go:embed constants.json`
+      copy + `GoalsForLevel`; server prints `map[pirate:3 raider:1]`,
+      matches), `game/world.go` stub (`StepWorld` panics until M2.3),
+      `game/golden{,_test}.go` (loads + validates the vector; parity test
+      skipped until M2.3), `cmd/netwars-server/main.go` (flags, embedded
+      constants, SIGINT/TERM). `go vet && go build && go test ./...` green.
+      No `coder/websocket` dep yet (M2.4). SP path untouched.
+- [x] **M2.3** *(m2-world: a6d03d8)* Ported `shared/sim` → Go: `vec.go`
+      (Vec3/Quat, faithful THREE ops), `rng.go` (+`RandomDir`), `rules.go`,
+      `ai.go` (5 behaviours), `weapons.go` (`Projectiles.Step`),
+      `enemies.go` (fleet + ordered goals + checkRam/checkPodStrikes),
+      `world.go` (`StepWorld`). `constants.go` ordered-decodes `levels` /
+      `levelsBeyond` (key order drives spawn pick). **`TestGoldenParity`
+      replays seed "golden" through the Go `StepWorld` (same scripted ship +
+      cannon cadence) and matches all 600 frames within 1e-4 — score, level,
+      FSM, ship, every enemy / pod / bonus / live projectile. PASSES.**
+      `go vet && go build && go test ./...` green. No client impact, no Node.
+- [x] **M2.4** *(m2-world: 8b88f4f)* Transport + arena. `proto/` (hello /
+      input / ping ↔ welcome / snapshot / event / pong / error, compact
+      JSON). `game/flight.go` (`StepShip` twin). `game/session.go` (session_id
+      → `*Arena`, drop when empty). `game/arena.go` (one goroutine: 60 Hz
+      `StepShip`+`fireWeapons`+`StepWorld`, snapshot every 2nd tick ≈ 30 Hz,
+      event batches as they happen). `game/snapshot.go`. `game/serve.go`
+      (`HandleConn`: accept, hello handshake, read/write pumps).
+      `cmd/netwars-server` now serves `/ws` + `/healthz` with graceful
+      shutdown. `TestArenaEndToEnd` (real ws dial): welcome→snapshots, tick
+      advances, ackSeq tracks input, fleet moves, cannon fire lands,
+      ping↔pong, arena tears down on leave. `StepWorld` still targets one
+      focus ship — N-ship authority is M2.6.
+- [~] **M2.5a** *(m2-world: 026db43)* `client/net.js` real: resolve server
+      (URL `server_id` or `location.host`; wss/ws by page proto), `hello`
+      handshake w/ timeout, mirrored `world` fed by `snapshot` (index-matched,
+      state objects reused for stable mesh diffing), local ship predicted via
+      `player.update` (fire disabled — server owns spawns), `input` frames
+      (seq+t+control+fire), `event` batch → same FX/HUD as sp.js, other
+      players rendered from `others`. No-hash → sp.js; connect fail → sp.js.
+      Verified: 2 tabs share a session + see each other + the AI world.
+- [ ] **M2.5b** client prediction reconcile against `ackSeq`; ~120 ms
+      interpolation buffer for remote entities; stable entity ids; per-class
+      HUD goals in the snapshot; RTT overlay from ping/pong.
+- [ ] **M2.6** Authority / co-op: arena holds N player ships, server
+      integrates each from its inputs and owns all shared state; clients
+      predict own + interpolate others; ≥ 2 humans share one pod defence,
+      both scores count, one can die/respawn while the other plays on.
+- [x] **M2.7** Deployed & live *(m2-world: …bde1050)*. `server/Makefile`
+      (`web`, `build-remote` — auto-detects box arch via `uname -m`,
+      `install-unit`, `deploy`, `logs`, `healthz`; ssh alias `vpn-ora-m`),
+      hardened systemd unit (binary at `/usr/local/bin`, loopback:8080,
+      `install -m 0755`), `Caddyfile.snippet` (`netwars.hmpf.cz` →
+      `127.0.0.1:8080`, `encode zstd gzip`), `deploy/README.md`. Box = **x86-64**
+      Oracle Cloud, static IP, Caddy on 80/443. **The binary also serves the
+      whole game client on `/`** (`server/web/` — `//go:embed all:assets`, a
+      committed copy of `index.html` + `client/` + `shared/` kept fresh by
+      `make web`); `https://netwars.hmpf.cz/` is a standalone deploy, no
+      GitHub Pages needed. Verified live: `wss://netwars.hmpf.cz/ws` → 101 →
+      `welcome` + streaming snapshots with the AI fleet moving server-side.
+- [ ] **M2.8 Verify**: `go test ./...` (golden-vector) green in CI; two local
+      browser profiles co-op on `netwars.localhost` (Caddy internal CA); real
+      2-person internet co-op with an RTT/jitter overlay. If a JS-only
+      `shared/sim` change ever needs an *automatic* parity gate, add a
+      Playwright CI step — deferred, heavier than the manual re-bless.
 
 ## M3 — deathmatch
 

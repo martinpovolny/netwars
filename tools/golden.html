@@ -1,0 +1,173 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NETWARS · golden vector</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, Menlo, monospace; margin: 24px; max-width: 60rem; }
+  button { font: inherit; padding: 6px 14px; margin-right: 8px; }
+  pre { background: #f4f4f4; padding: 10px; overflow: auto; max-height: 60vh; }
+  .ok { color: #0a0; } .bad { color: #c00; }
+</style>
+<h1>golden vector generator</h1>
+<p>
+  Runs <code>shared/sim/world.js#stepWorld</code> for a fixed number of ticks off
+  a seeded RNG and serialises the world after each tick. Save the result as
+  <code>server/testdata/golden.json</code>; the Go parity test replays the same
+  seed and asserts its <code>stepWorld</code> matches within 1e-4.
+</p>
+<p>
+  Regenerate only after a deliberate change to <code>shared/sim/</code>. The Go
+  test will then fail until <code>server/game</code> is re-synced — that is the
+  drift guard doing its job.
+</p>
+<p>
+  <button id="run">generate</button>
+  <button id="save" disabled>download golden.json</button>
+  <span id="status"></span>
+</p>
+<pre id="meta"></pre>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.169.0/three.module.min.js" } }
+</script>
+<script type="module">
+import { Vector3, Quaternion } from '../shared/sim/vec.js';
+import K from '../shared/constants.js';
+import { ENEMY_TYPES, goalsForLevel } from '../shared/constants.js';
+import { makeRng } from '../shared/sim/rng.js';
+import { makeWorld, startWorldLevel, stepWorld } from '../shared/sim/world.js';
+
+// ---- fixed run parameters — the Go test hard-codes the same ----------------
+const SEED = 'golden';
+const TICKS = 600;
+const DT = 1 / 60;
+const START_LEVEL = 1;
+const ROUND = 1e5;                 // 5 decimals; test tolerance is 1e-4
+
+const r5 = (x) => Math.round(x * ROUND) / ROUND;
+const v3 = (v) => [r5(v.x), r5(v.y), r5(v.z)];
+const q4 = (q) => [r5(q.x), r5(q.y), r5(q.z), r5(q.w)];
+
+// A bare ship the shared sim can read + damage; no meshes, no audio.
+function makeShip() {
+  return {
+    position: new Vector3(), quaternion: new Quaternion(), velocity: new Vector3(),
+    hull: 100, maxHull: 100, missiles: 16, maxMissiles: 16, alive: true, invuln: 0, hitPulse: 0,
+    damage(a) { if (!this.alive || this.invuln > 0) return; this.hull -= a; this.hitPulse = 1; if (this.hull <= 0) { this.hull = 0; this.alive = false; } },
+    repair(n) { this.hull = Math.min(this.maxHull, this.hull + n); },
+    giveMissiles(n) { this.missiles = Math.min(this.maxMissiles, this.missiles + n); },
+  };
+}
+
+// Deterministic ship path: a Lissajous drift so enemy AI / leash / lead all
+// get exercised. (stepWorld doesn't move the ship — that's the client's job —
+// so we script it as an input.)
+function driveShip(ship, t) {
+  const s = t * DT;
+  ship.position.set(700 * Math.sin(s * 0.31), 220 * Math.sin(s * 0.53 + 1), 640 * Math.cos(s * 0.24));
+  ship.velocity.set(
+    700 * 0.31 * Math.cos(s * 0.31),
+    220 * 0.53 * Math.cos(s * 0.53 + 1),
+    -640 * 0.24 * Math.sin(s * 0.24),
+  );
+  // face roughly along velocity
+  const spd = ship.velocity.length();
+  if (spd > 1e-3) ship.quaternion.setFromUnitVectors(new Vector3(0, 0, -1), ship.velocity.clone().multiplyScalar(1 / spd));
+}
+
+// The client fires the cannon; the golden run does it on a fixed cadence,
+// aimed at the nearest live enemy, straight into the shared pool.
+function fireCannon(world, t) {
+  if (t % 9 !== 0) return;
+  let best = null, bd = Infinity;
+  for (const e of world.fleet.list) {
+    if (e.dead) continue;
+    const d = e.position.distanceToSquared(world.ship.position);
+    if (d < bd) { bd = d; best = e; }
+  }
+  if (!best) return;
+  const dir = best.position.clone().sub(world.ship.position).normalize();
+  const vel = world.ship.velocity.clone().addScaledVector(dir, K.player.cannonMuzzle);
+  world.projectiles.spawn(world.ship.position.clone().addScaledVector(dir, 12), vel, 'player', K.player.boltTtl, null, 'bolt');
+}
+
+function snapshot(world, t) {
+  const proj = [];
+  const p = world.projectiles;
+  for (let i = 0; i < p.max; i++) {
+    if (p.ttl[i] <= 0) continue;
+    proj.push({ i, pos: v3(p.pos[i]), vel: v3(p.vel[i]), ttl: r5(p.ttl[i]), age: r5(p.age[i]), team: p.team[i], kind: p.kind[i] });
+  }
+  return {
+    t,
+    score: world.score,
+    level: world.fleet.level,
+    fsm: { state: world.fsm.state, timer: r5(world.fsm.timer) },
+    ship: { pos: v3(world.ship.position), vel: v3(world.ship.velocity), quat: q4(world.ship.quaternion), hull: r5(world.ship.hull), missiles: world.ship.missiles, alive: world.ship.alive },
+    enemies: world.fleet.list.map((e) => ({
+      type: e.type, behavior: e.behavior,
+      pos: v3(e.position), vel: v3(e.velocity), quat: q4(e.quaternion),
+      hp: r5(e.hp), state: e.state, stateT: r5(e.stateT), fireCd: r5(e.fireCd), strafeSign: e.strafeSign,
+    })),
+    pods: world.pods.list.map((pd) => ({ pos: v3(pd.position), hp: r5(pd.hp), dead: pd.dead, captor: !!pd.captor })),
+    bonuses: world.bonuses.list.map((b) => ({ kind: b.kind, pos: v3(b.position), life: r5(b.life) })),
+    proj,
+  };
+}
+
+function generate() {
+  const ship = makeShip();
+  const world = makeWorld({ K, rng: makeRng(SEED), ENEMY_TYPES, goalsForLevel, ship });
+  startWorldLevel(world, START_LEVEL, K.pods.perLevel);
+
+  const ticks = [];
+  for (let t = 0; t < TICKS; t++) {
+    driveShip(ship, t);
+    fireCannon(world, t);
+    for (const ev of stepWorld(world, DT)) {
+      if (ev.kind === 'level' && ev.action.startLevel) startWorldLevel(world, ev.action.startLevel, K.pods.perLevel);
+    }
+    ticks.push(snapshot(world, t));
+  }
+
+  return {
+    _note: 'NETWARS golden vector — replay stepWorld with this seed and assert each tick matches within 1e-4. Regenerate via tools/golden.html only on a deliberate shared/sim change.',
+    seed: SEED, ticks: TICKS, dt: DT, startLevel: START_LEVEL,
+    frames: ticks,
+  };
+}
+
+const statusEl = document.getElementById('status');
+const metaEl = document.getElementById('meta');
+let payload = null;
+
+document.getElementById('run').addEventListener('click', () => {
+  statusEl.textContent = 'running…';
+  setTimeout(() => {
+    const t0 = performance.now();
+    payload = generate();
+    const ms = (performance.now() - t0).toFixed(0);
+    const json = JSON.stringify(payload);
+    window.__golden = json;                          // for headless capture
+    const last = payload.frames[payload.frames.length - 1];
+    metaEl.textContent = [
+      `seed=${payload.seed}  ticks=${payload.ticks}  dt=${payload.dt}`,
+      `generated in ${ms} ms   json ${(json.length / 1024).toFixed(0)} KB`,
+      ``,
+      `final: level ${last.level}  score ${last.score}  fsm ${last.fsm.state}`,
+      `       enemies ${last.enemies.length}  pods ${last.pods.length}  bonuses ${last.bonuses.length}  proj ${last.proj.length}`,
+      `       ship hull ${last.ship.hull}  missiles ${last.ship.missiles}  alive ${last.ship.alive}`,
+    ].join('\n');
+    statusEl.innerHTML = '<span class="ok">done — save it as server/testdata/golden.json</span>';
+    document.getElementById('save').disabled = false;
+  }, 0);
+});
+
+document.getElementById('save').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'golden.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+</script>

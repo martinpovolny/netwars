@@ -1,0 +1,38 @@
+# /etc/systemd/system/netwars-server.service
+#
+#   sudo cp deploy/netwars-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now netwars-server
+#
+# Binary lives at /usr/local/bin/netwars-server (see the Makefile deploy
+# target). It's world-traversable, so DynamicUser can always exec it.
+# Constants are embedded — no data files, no WorkingDirectory needed.
+
+[Unit]
+Description=NETWARS co-op arena server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/netwars-server -addr 127.0.0.1:8080
+Restart=on-failure
+RestartSec=2
+
+# run as an unprivileged, transient user; bind is loopback:8080 so no caps needed
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
