@@ -100,7 +100,7 @@ export class HUD {
       if (this.board) {
         this.board.style.display = 'block';
         const esc = (s) => String(s).slice(0, 16).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
-        this.board.innerHTML = (lock.board || [])
+        this.board.innerHTML = '<div class="btitle">FRAGS</div>' + (lock.board || [])
           .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${esc(r.n)}</span><span>${r.f | 0}</span></div>`)
           .join('');
       }

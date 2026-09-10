@@ -131,17 +131,23 @@
   /* online-only: round-trip time to the server */
   #net { position: absolute; left: 14px; top: 12px; color: var(--green); opacity: 0.55; font-size: 12px; }
 
-  /* deathmatch frag scoreboard (top-centre) */
+  /* deathmatch leaderboard — a standing panel under the score, top-right */
   #board {
-    position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
-    min-width: 190px; padding: 5px 12px; display: none;
-    background: rgba(0,0,0,0.5); border: 1px solid var(--green);
+    position: absolute; right: 20px; top: 68px; display: none;
+    min-width: 200px; padding: 6px 12px 8px;
+    background: rgba(0,0,0,0.55); border: 1px solid var(--green);
     color: var(--green); font-size: 13px;
   }
-  #board .brow { display: flex; justify-content: space-between; gap: 28px; line-height: 1.6; white-space: nowrap; }
+  #board .btitle {
+    text-align: center; letter-spacing: 3px; font-size: 11px;
+    color: var(--green); opacity: 0.7; border-bottom: 1px solid rgba(53,224,74,0.35);
+    padding-bottom: 3px; margin-bottom: 4px;
+  }
+  #board .brow { display: flex; justify-content: space-between; gap: 28px; line-height: 1.65; white-space: nowrap; }
   #board .brow.me { color: #fff; }
   #board .brow.me span:last-child { color: var(--amber); }
   #board .brow.out { opacity: 0.4; }
+  #board .brow span:last-child { font-variant-numeric: tabular-nums; }
 
   /* centre message */
   #msg {

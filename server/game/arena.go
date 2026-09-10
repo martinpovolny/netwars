@@ -327,7 +327,8 @@ func (a *Arena) stepDM() {
 		a.world.Ships = append(a.world.Ships, p.Ship)
 	}
 
-	evs := a.dmProjectiles()
+	evs := a.dmRams()
+	evs = append(evs, a.dmProjectiles()...)
 
 	if pe := EventsToProto(evs); pe != nil {
 		b := proto.Marshal(proto.EventBatch{Type: proto.TypeEvent, Tick: a.tick, Events: pe})
@@ -398,6 +399,44 @@ func (a *Arena) dmProjectiles() []Event {
 					evs = append(evs, Event{Kind: "frag", Pos: vic.Ship.Pos, Killer: pr.Owner[i], Victim: id})
 				}
 				break
+			}
+		}
+	}
+	return evs
+}
+
+// dmRams — deathmatch ship-to-ship collisions. Both take ram damage and are
+// knocked apart; if one dies, the survivor is credited with the frag.
+func (a *Arena) dmRams() []Event {
+	ke := a.k.Enemy
+	rr := 2*a.k.Player.Radius + ke["ramDist"]
+	dmg := ke["ramDmg"]
+	kb := ke["ramKnockback"]
+	var evs []Event
+	for i := 0; i < len(a.order); i++ {
+		for j := i + 1; j < len(a.order); j++ {
+			pa, pb := a.players[a.order[i]], a.players[a.order[j]]
+			sa, sb := pa.Ship, pb.Ship
+			if !sa.Alive || !sb.Alive {
+				continue
+			}
+			if sa.Pos.DistanceToSq(sb.Pos) >= rr*rr {
+				continue
+			}
+			sa.Damage(dmg)
+			sb.Damage(dmg)
+			away := sa.Pos
+			away.Sub(sb.Pos).Normalize()
+			sa.Vel.AddScaledVector(away, kb)
+			sb.Vel.AddScaledVector(away, -kb)
+			evs = append(evs, Event{Kind: "ram", Pos: sa.Pos})
+			if !sa.Alive && sb.Alive {
+				pb.frags++
+				evs = append(evs, Event{Kind: "frag", Pos: sa.Pos, Killer: pb.ID, Victim: pa.ID})
+			}
+			if !sb.Alive && sa.Alive {
+				pa.frags++
+				evs = append(evs, Event{Kind: "frag", Pos: sb.Pos, Killer: pa.ID, Victim: pb.ID})
 			}
 		}
 	}

@@ -159,6 +159,43 @@ func TestArenaDeathmatch(t *testing.T) {
 	}
 }
 
+// Deathmatch: ramming another player hurts both and, on a kill, frags for
+// the survivor.
+func TestArenaDeathmatchRam(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-ram", "dm", "dm-ram")
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+	p1.Ship.Pos = Vec3{}
+	p1.Ship.Invuln, p1.Ship.Hull = 0, 5
+	p2.Ship.Pos = Vec3{X: 10} // overlapping
+	p2.Ship.Invuln, p2.Ship.Hull = 0, p2.Ship.MaxHull
+
+	evs := a.dmRams()
+
+	if p1.Ship.Alive {
+		t.Fatalf("rammed low-hull ship survived: %v", p1.Ship.Hull)
+	}
+	if p2.Ship.Hull >= p2.Ship.MaxHull {
+		t.Fatalf("rammer took no damage: %v", p2.Ship.Hull)
+	}
+	if p2.frags != 1 {
+		t.Fatalf("survivor frags = %d, want 1", p2.frags)
+	}
+	gotFrag := false
+	for _, e := range evs {
+		if e.Kind == "frag" && e.Killer == p2.ID && e.Victim == p1.ID {
+			gotFrag = true
+		}
+	}
+	if !gotFrag {
+		t.Fatalf("no frag event for the ram kill: %+v", evs)
+	}
+}
+
 // A dead co-op player respawns on its own after respawnDelay; the others
 // keep playing and the level does not restart.
 func TestArenaIndependentRespawn(t *testing.T) {
