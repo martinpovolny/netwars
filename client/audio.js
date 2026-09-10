@@ -4,8 +4,11 @@ export class Audio {
   constructor() {
     this.ctx = null;
     this.music = null;          // HTMLAudioElement, created on first use
-    this.musicOn = false;
-    try { this.musicOn = localStorage.getItem('nw-music') === '1'; } catch { /* private mode */ }
+    this.musicOn = true;        // default on; starts at the first user gesture
+    try {
+      const v = localStorage.getItem('nw-music');
+      if (v !== null) this.musicOn = v === '1';   // respect an explicit earlier choice
+    } catch { /* private mode */ }
   }
 
   _ensureMusic() {
