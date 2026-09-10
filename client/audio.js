@@ -1,6 +1,38 @@
-// Tiny WebAudio blip synth. Must be resumed after a user gesture.
+// Tiny WebAudio blip synth (SFX) + a looping background-music track.
+// Both need a user gesture to start; the music preference is remembered.
 export class Audio {
-  constructor() { this.ctx = null; }
+  constructor() {
+    this.ctx = null;
+    this.music = null;          // HTMLAudioElement, created on first use
+    this.musicOn = false;
+    try { this.musicOn = localStorage.getItem('nw-music') === '1'; } catch { /* private mode */ }
+  }
+
+  _ensureMusic() {
+    if (this.music) return;
+    const a = new window.Audio('track_01.mp3');
+    a.loop = true;
+    a.volume = 0.35;
+    a.preload = 'auto';
+    this.music = a;
+  }
+
+  // call from the first user gesture — resumes music if it was left on
+  startMusicIfWanted() {
+    if (!this.musicOn) return;
+    this._ensureMusic();
+    this.music.play().catch(() => { /* still needs a gesture; the M key will do it */ });
+  }
+
+  // toggle on/off (bound to a key). Returns the new state.
+  toggleMusic() {
+    this._ensureMusic();
+    this.musicOn = !this.musicOn;
+    try { localStorage.setItem('nw-music', this.musicOn ? '1' : '0'); } catch { /* ignore */ }
+    if (this.musicOn) this.music.play().catch(() => {});
+    else this.music.pause();
+    return this.musicOn;
+  }
 
   resume() {
     if (!this.ctx) {

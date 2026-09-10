@@ -182,9 +182,10 @@ function runOnline({ ws, welcome }, { mode }) {
     paused: false, get score() { return world.score; }, get state() { return world.fsm.state; },
   };
 
-  canvas.addEventListener('mousedown', () => { audio.resume(); hud.hideHelp(); }, { once: true });
+  canvas.addEventListener('mousedown', () => { audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
     if (e.code === 'KeyH') hud.showHelp(4);
     if (e.code === 'BracketRight' || e.code === 'Equal') { radar.zoom(1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
     if (e.code === 'BracketLeft' || e.code === 'Minus') { radar.zoom(-1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
