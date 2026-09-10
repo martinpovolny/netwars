@@ -32,7 +32,7 @@ web:
 	cp ../index.html web/assets/index.html
 	cp -R ../client web/assets/client
 	cp -R ../shared web/assets/shared
-	@[ -f ../track_01.mp3 ] && cp ../track_01.mp3 web/assets/ && echo "bundled track_01.mp3" || echo "note: ../track_01.mp3 missing — music will 404"
+	@[ -d ../tracks ] && cp -R ../tracks web/assets/tracks && echo "bundled tracks/" || echo "note: ../tracks/ missing — music will 404"
 	@find web/assets -type f | wc -l | xargs echo "web/assets files:"
 
 test:
