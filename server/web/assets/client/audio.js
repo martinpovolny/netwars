@@ -10,7 +10,7 @@ export class Audio {
 
   _ensureMusic() {
     if (this.music) return;
-    const a = new window.Audio('track_01.mp3');
+    const a = new window.Audio('tracks/track_01.mp3');
     a.loop = true;
     a.volume = 0.35;
     a.preload = 'auto';
