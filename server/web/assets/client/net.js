@@ -9,7 +9,7 @@
 // against ackSeq are M2.5b.
 import * as THREE from 'three';
 import { stepShip } from '../shared/sim/flight.js';
-import { Input, goFullscreen } from './input.js';
+import { Input, goFullscreen, toggleFullscreen } from './input.js';
 import { Audio } from './audio.js';
 import { Player } from './player.js';
 import { Weapons } from './weapons.js';
@@ -185,6 +185,7 @@ function runOnline({ ws, welcome }, { mode }) {
   canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    if (e.code === 'Enter') { toggleFullscreen(); return; }
     if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
     if (e.code === 'KeyH') hud.showHelp(4);
     if (e.code === 'BracketRight' || e.code === 'Equal') { radar.zoom(1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }

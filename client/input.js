@@ -48,9 +48,8 @@ export class Input {
 }
 
 // Ask the browser to make the page real fullscreen (no toolbar / tab strip).
-// Must run inside a user gesture — call it from the click-to-play handler. A
-// no-op if already fullscreen or the browser refuses. Esc leaves fullscreen
-// (browser default); the canvas resize listeners handle the size change.
+// Must run inside a user gesture. No-op if already fullscreen or refused. The
+// canvas resize listeners handle the size change.
 export function goFullscreen(el = document.documentElement) {
   if (document.fullscreenElement || document.webkitFullscreenElement) return;
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
@@ -59,4 +58,15 @@ export function goFullscreen(el = document.documentElement) {
     const p = req.call(el);
     if (p && p.catch) p.catch(() => {});
   } catch { /* browser refused — stay windowed */ }
+}
+
+// Enter if windowed, leave if fullscreen — bound to a key so it works during
+// play (the click-to-play handler only ever enters).
+export function toggleFullscreen(el = document.documentElement) {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) { try { exit.call(document); } catch { /* ignore */ } }
+  } else {
+    goFullscreen(el);
+  }
 }
