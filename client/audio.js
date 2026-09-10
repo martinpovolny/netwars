@@ -1,23 +1,52 @@
-// Tiny WebAudio blip synth (SFX) + a looping background-music track.
-// Both need a user gesture to start; the music preference is remembered.
+// Tiny WebAudio blip synth (SFX) + a background-music playlist that cycles
+// through tracks/track_01.mp3, track_02.mp3, … (however many exist — found by
+// probing on load). Music needs a user gesture to start; the on/off choice is
+// remembered.
+const TRACK_URL = (i) => `tracks/track_${String(i).padStart(2, '0')}.mp3`;
+const MAX_TRACKS = 32;
+
 export class Audio {
   constructor() {
     this.ctx = null;
     this.music = null;          // HTMLAudioElement, created on first use
+    this.trackIdx = 0;
+    this.playlist = [TRACK_URL(1)];   // replaced by _discoverTracks()
     this.musicOn = true;        // default on; starts at the first user gesture
     try {
       const v = localStorage.getItem('nw-music');
       if (v !== null) this.musicOn = v === '1';   // respect an explicit earlier choice
     } catch { /* private mode */ }
+    this._discoverTracks();
+  }
+
+  // Probe track_01.mp3, track_02.mp3, … until one is missing. HEAD requests to
+  // the same origin — cheap, and no manifest to keep in sync.
+  async _discoverTracks() {
+    const found = [];
+    for (let i = 1; i <= MAX_TRACKS; i++) {
+      try {
+        const r = await fetch(TRACK_URL(i), { method: 'HEAD' });
+        if (!r.ok) break;
+        found.push(TRACK_URL(i));
+      } catch { break; }
+    }
+    if (found.length) this.playlist = found;
   }
 
   _ensureMusic() {
     if (this.music) return;
-    const a = new window.Audio('tracks/track_01.mp3');
-    a.loop = true;
+    const a = new window.Audio(this.playlist[this.trackIdx]);
+    a.loop = false;            // advance the playlist manually on 'ended'
     a.volume = 0.35;
     a.preload = 'auto';
+    a.addEventListener('ended', () => this._nextTrack());
     this.music = a;
+  }
+
+  _nextTrack() {
+    this.trackIdx = (this.trackIdx + 1) % this.playlist.length;
+    this.music.src = this.playlist[this.trackIdx];
+    if (this.musicOn) this.music.play().catch(() => {});
   }
 
   // call from the first user gesture — resumes music if it was left on
