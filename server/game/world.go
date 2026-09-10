@@ -44,6 +44,8 @@ type Event struct {
 	Bonus    string      // bonusPicked: "missiles" | "repair"
 	Enemy    *Enemy      // enemyKilled: for scoring / kill feed
 	Action   LevelAction // level: what the FSM decided
+	Killer   string      // frag (dm): player id that scored the kill
+	Victim   string      // frag (dm): player id that died
 }
 
 type World struct {

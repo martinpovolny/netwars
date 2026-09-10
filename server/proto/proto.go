@@ -137,6 +137,15 @@ type Snapshot struct {
 	Pods     []PodS   `json:"pods"`
 	Bonuses  []BonusS `json:"bonuses"`
 	Proj     []ProjS  `json:"proj"`
+	Board    []ScoreS `json:"board,omitempty"` // deathmatch scoreboard
+}
+
+// ScoreS is one row of the deathmatch scoreboard.
+type ScoreS struct {
+	ID    string `json:"id"`
+	Name  string `json:"n"`
+	Frags int    `json:"f"`
+	Alive bool   `json:"a"`
 }
 
 type EventS struct {
@@ -151,6 +160,9 @@ type EventS struct {
 	// level events: Start marks the actual (re)start tick (vs the earlier
 	// won/lost banner) so the client resets its ship exactly once.
 	Start bool `json:"start,omitempty"`
+	// frag events (deathmatch): who killed whom.
+	Killer string `json:"kr,omitempty"`
+	Victim string `json:"vk,omitempty"`
 }
 
 type EventBatch struct {

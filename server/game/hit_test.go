@@ -99,6 +99,66 @@ func TestArenaInvulnDecaysAndHitsLand(t *testing.T) {
 	}
 }
 
+// Deathmatch: no fleet, a bolt frags another player, the dead respawn.
+func TestArenaDeathmatch(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm", "dm", "dm-seed")
+	if !a.dm {
+		t.Fatal("arena not in dm mode")
+	}
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+	p2.Ship.Pos = Vec3{X: 400}
+	p2.Ship.Invuln = 0
+	p2.Ship.Hull = 5 // one bolt kills
+
+	// p1 fires a bolt sitting on p2
+	a.world.Projectiles.Spawn(p2.Ship.Pos, Vec3{}, teamPlayer, 3.0, nil, kindBolt, p1.ID)
+	evs := a.dmProjectiles()
+
+	if p2.Ship.Alive {
+		t.Fatalf("victim survived a lethal bolt: hull %v", p2.Ship.Hull)
+	}
+	if p1.frags != 1 {
+		t.Fatalf("killer frags = %d, want 1", p1.frags)
+	}
+	var frag *Event
+	for i := range evs {
+		if evs[i].Kind == "frag" {
+			frag = &evs[i]
+		}
+	}
+	if frag == nil || frag.Killer != p1.ID || frag.Victim != p2.ID {
+		t.Fatalf("frag event = %+v", frag)
+	}
+
+	// no AI ever spawns in dm
+	if len(a.world.Fleet.List) != 0 {
+		t.Fatalf("dm arena has %d enemies", len(a.world.Fleet.List))
+	}
+
+	// the dead player respawns after the timer
+	revived := false
+	for i := 0; i < int(dmRespawnDelay/tickDT)+30; i++ {
+		a.step()
+		if p2.Ship.Alive {
+			revived = true
+			break
+		}
+	}
+	if !revived || p2.Ship.Hull != p2.Ship.MaxHull {
+		t.Fatalf("dm respawn failed: alive=%v hull=%v", p2.Ship.Alive, p2.Ship.Hull)
+	}
+
+	board := a.board()
+	if len(board) != 2 || board[0].ID != p1.ID || board[0].Frags != 1 {
+		t.Fatalf("scoreboard = %+v", board)
+	}
+}
+
 // A dead co-op player respawns on its own after respawnDelay; the others
 // keep playing and the level does not restart.
 func TestArenaIndependentRespawn(t *testing.T) {

@@ -84,6 +84,10 @@ func EventsToProto(evs []Event) []proto.EventS {
 			pe.Hold = e.Action.Hold
 			pe.Start = e.Action.StartLevel != 0
 		}
+		if e.Kind == "frag" {
+			pe.Killer = e.Killer
+			pe.Victim = e.Victim
+		}
 		out = append(out, pe)
 	}
 	return out

@@ -131,6 +131,18 @@
   /* online-only: round-trip time to the server */
   #net { position: absolute; left: 14px; top: 12px; color: var(--green); opacity: 0.55; font-size: 12px; }
 
+  /* deathmatch frag scoreboard (top-centre) */
+  #board {
+    position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+    min-width: 190px; padding: 5px 12px; display: none;
+    background: rgba(0,0,0,0.5); border: 1px solid var(--green);
+    color: var(--green); font-size: 13px;
+  }
+  #board .brow { display: flex; justify-content: space-between; gap: 28px; line-height: 1.6; white-space: nowrap; }
+  #board .brow.me { color: #fff; }
+  #board .brow.me span:last-child { color: var(--amber); }
+  #board .brow.out { opacity: 0.4; }
+
   /* centre message */
   #msg {
     position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
@@ -204,6 +216,7 @@
 
   <div id="obj">Level 1</div>
   <div id="pods">Pods 6/6</div>
+  <div id="board"></div>
   <div id="net"></div>
   <div id="msg"></div>
   <div id="dead">Ship Destroyed

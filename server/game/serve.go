@@ -48,11 +48,15 @@ func HandleConn(parent context.Context, w http.ResponseWriter, r *http.Request, 
 	if mode == "" {
 		mode = "coop"
 	}
+	name := hello.Name
+	if len(name) > 16 {
+		name = name[:16]
+	}
 
 	arena := s.getOrCreate(hello.Session, mode)
 	p := &Player{
 		ID:   "p" + itoa(int(s.nextPID.Add(1))),
-		Name: hello.Name,
+		Name: name,
 		out:  make(chan []byte, outboxSize),
 	}
 

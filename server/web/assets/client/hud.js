@@ -11,6 +11,7 @@ export class HUD {
     this.help = document.getElementById('help');
     this.obj = document.getElementById('obj');
     this.podsEl = document.getElementById('pods');
+    this.board = document.getElementById('board');
     this.net = document.getElementById('net');
     this.intent = document.getElementById('intent');
     this.mouse = document.getElementById('mouse');
@@ -66,9 +67,13 @@ export class HUD {
     // red damage vignette
     if (this.hitFlash) this.hitFlash.style.opacity = (player.hitPulse * 0.9).toFixed(3);
 
+    const dm = !!(lock && lock.dm);
+
     this.dead.style.display = player.alive ? 'none' : 'block';
     if (!player.alive && this.deadSub) {
-      this.deadSub.textContent = `Level ${enemies.level}   Score ${String(score).padStart(6, '0')}`;
+      this.deadSub.textContent = dm
+        ? 'FRAGGED — respawning'
+        : `Level ${enemies.level}   Score ${String(score).padStart(6, '0')}`;
     }
 
     // reticle: deployed intent marker + raw mouse cursor
@@ -88,22 +93,37 @@ export class HUD {
       }
     }
 
-    const parts = [`Level ${enemies.level}`];
-    for (const k of Object.keys(enemies.goals)) {
-      if (enemies.goals[k] > 0) parts.push(`${ENEMY_TYPES[k].name}×${enemies.goals[k]}`);
+    if (dm) {
+      // deathmatch: the top HUD is a frag scoreboard, not level objectives
+      this.obj.style.display = 'none';
+      if (this.podsEl) this.podsEl.style.display = 'none';
+      if (this.board) {
+        this.board.style.display = 'block';
+        const esc = (s) => String(s).slice(0, 16).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+        this.board.innerHTML = (lock.board || [])
+          .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${esc(r.n)}</span><span>${r.f | 0}</span></div>`)
+          .join('');
+      }
+    } else {
+      if (this.board) this.board.style.display = 'none';
+      this.obj.style.display = '';
+      if (this.podsEl) this.podsEl.style.display = '';
+      const parts = [`Level ${enemies.level}`];
+      for (const k of Object.keys(enemies.goals)) {
+        if (enemies.goals[k] > 0) parts.push(`${ENEMY_TYPES[k].name}×${enemies.goals[k]}`);
+      }
+      this.obj.textContent = parts.join('   ');
+      if (this.podsEl) {
+        this.podsEl.textContent = `Pods ${pods.alive}/${pods.total}`;
+        this.podsEl.classList.toggle('crit', pods.alive <= 2);
+      }
     }
-    this.obj.textContent = parts.join('   ');
 
     if (radar && this.radarLabel) {
       this.radarLabel.textContent = `Scanner  Z${radar.zoomLevel}/${radar.maxZoom} · ${radar.range}`;
     }
 
     if (this.net) this.net.textContent = lock && lock.rtt ? `RTT ${Math.round(lock.rtt)} ms` : '';
-
-    if (this.podsEl) {
-      this.podsEl.textContent = `Pods ${pods.alive}/${pods.total}`;
-      this.podsEl.classList.toggle('crit', pods.alive <= 2);
-    }
 
     if (this._flash > 0) {
       this._flash -= dt;

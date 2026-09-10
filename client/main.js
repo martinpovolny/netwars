@@ -25,6 +25,7 @@ if (hash) {
     session,
     serverId: params.get('server_id'),
     mode: params.get('mode') || 'coop',
+    name: params.get('name') || '',
   });
 } else {
   await import('./sp.js');
