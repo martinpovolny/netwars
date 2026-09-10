@@ -46,3 +46,15 @@ export class Input {
     return m;
   }
 }
+
+// Toggle the browser's Fullscreen API on the whole page. Must be called from a
+// user-gesture handler (a keydown counts). The canvas resize listeners already
+// pick up the size change, so nothing else is needed.
+export function toggleFullscreen(el = document.documentElement) {
+  const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+  if (fsEl) {
+    (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document);
+  } else {
+    (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
+  }
+}
