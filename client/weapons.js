@@ -16,6 +16,7 @@ export class Weapons {
     boltGeo.scale(2.2, 2.2, 9);
     this._matP = new THREE.MeshBasicMaterial({ color: 0x9fc4d0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7 });
     this._matE = new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 1 });
+    this._matL = new THREE.MeshBasicMaterial({ color: 0x62d0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 1 }); // Guardian lance
     const coreGeo = new THREE.OctahedronGeometry(1, 0);
     coreGeo.scale(1.1, 1.1, 4.5);
     const matCore = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7 });
@@ -77,6 +78,7 @@ export class Weapons {
 
     this._cBolt = new THREE.Color(0x7fa8b6);
     this._cE = new THREE.Color(0xff3a24);
+    this._cL = new THREE.Color(0x62d0ff);
     this._cMsl = new THREE.Color(0xffd23a);
     this._dir = new THREE.Vector3();
   }
@@ -125,25 +127,30 @@ export class Weapons {
         tc[a] = this._cMsl.r; tc[a + 1] = this._cMsl.g; tc[a + 2] = this._cMsl.b;
         tc[a + 3] = this._cMsl.r * 0.1; tc[a + 4] = this._cMsl.g * 0.1; tc[a + 5] = this._cMsl.b * 0.1;
       } else {
+        const isLance = p.kind[i] === 'lance';
         const isEnemy = p.team[i] === 'enemy';
         bolt.visible = true;
-        bolt.material = isEnemy ? this._matE : this._matP;
+        bolt.material = isLance ? this._matL : isEnemy ? this._matE : this._matP;
         bolt.position.copy(p.pos[i]);
         if (speed > 1e-3) bolt.quaternion.setFromUnitVectors(FZ, this._dir);
-        if (isEnemy) {
+        if (isLance) {
+          const pulse = 3.4 + 0.7 * Math.sin(p.age[i] * 60);
+          bolt.scale.set(pulse, pulse, 7);          // long bright shard
+        } else if (isEnemy) {
           const pulse = 2.6 + 0.9 * Math.sin(p.age[i] * 42);
           bolt.scale.set(pulse, pulse, 1.7);
         } else {
           bolt.scale.set(1, 1, 1);
         }
-        const col = isEnemy ? this._cE : this._cBolt;
-        const trail = isEnemy ? 0.07 : 0.04;
+        const col = isLance ? this._cL : isEnemy ? this._cE : this._cBolt;
+        const trail = isLance ? 0.14 : isEnemy ? 0.07 : 0.04;
         tp[a] = p.pos[i].x; tp[a + 1] = p.pos[i].y; tp[a + 2] = p.pos[i].z;
         tp[a + 3] = p.pos[i].x - p.vel[i].x * trail;
         tp[a + 4] = p.pos[i].y - p.vel[i].y * trail;
         tp[a + 5] = p.pos[i].z - p.vel[i].z * trail;
+        const tail = isLance ? 0.55 : 0.1;   // lance draws a near-solid beam
         tc[a] = col.r; tc[a + 1] = col.g; tc[a + 2] = col.b;
-        tc[a + 3] = col.r * 0.1; tc[a + 4] = col.g * 0.1; tc[a + 5] = col.b * 0.1;
+        tc[a + 3] = col.r * tail; tc[a + 4] = col.g * tail; tc[a + 5] = col.b * tail;
       }
     }
 

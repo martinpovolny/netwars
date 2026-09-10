@@ -39,9 +39,17 @@ export class Enemies {
     for (const e of live) {
       const m = this._meshes.get(e);
       if (!m) continue;
-      if (e.flash > 0) {
-        e.flash = Math.max(0, e.flash - dt * 6);
-        if (m.hullMat) m.hullMat.emissive.setScalar(e.flash * 0.9);
+      if (m.hullMat) {
+        if (e.flash > 0) {
+          e.flash = Math.max(0, e.flash - dt * 6);
+          m.hullMat.emissive.setScalar(e.flash * 0.9);
+        } else if (e.charge > 0) {
+          // Guardian winding up a lance — a bright blue pulse to telegraph it
+          const g = 0.35 + 0.65 * Math.abs(Math.sin(performance.now() * 0.012));
+          m.hullMat.emissive.setRGB(0.12 * g, 0.55 * g, g);
+        } else {
+          m.hullMat.emissive.setScalar(0);
+        }
       }
       m.group.position.copy(e.position);
       m.group.quaternion.copy(e.quaternion);

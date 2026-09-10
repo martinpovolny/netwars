@@ -368,6 +368,7 @@ function runOnline({ ws, welcome }, { mode }) {
       dst.tquat.set(src.q[0], src.q[1], src.q[2], src.q[3]);
       dst.velocity.set(src.v[0], src.v[1], src.v[2]);
       dst.hp = src.hp;
+      dst.charge = src.ch || 0;   // Guardian lance telegraph
     });
 
     syncList(world.pods.list, s.pods || [], (dst, src) => {

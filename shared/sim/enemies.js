@@ -41,6 +41,7 @@ export function makeEnemyState(typeKey, ENEMY_TYPES, KE, rng = Math.random) {
     state: 'init',
     stateT: 0,
     holdFor: 0,
+    charge: 0,          // Guardian lance windup (seconds remaining); visual-only elsewhere
     perch: new Vector3(),
     movePos: new Vector3(),
     aimPos: new Vector3(),

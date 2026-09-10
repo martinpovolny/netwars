@@ -99,6 +99,7 @@ type EnemyS struct {
 	Vel  Vec3    `json:"v"`
 	Quat Quat    `json:"q"`
 	HP   float64 `json:"hp"`
+	Ch   float64 `json:"ch,omitempty"` // Guardian lance windup (drives the client's telegraph glow)
 }
 
 type PodS struct {

@@ -109,6 +109,7 @@ export class Audio {
 
   laser()      { this._tone(900, 0.12, 'square', 0.035, 240); }
   enemyLaser() { this._tone(320, 0.14, 'sawtooth', 0.03, 120); }
+  enemyLance() { this._tone(1400, 0.22, 'sawtooth', 0.05, 180); this._tone(700, 0.22, 'square', 0.03, 90); }
   hit()        { this._tone(150, 0.18, 'square', 0.06, 60); }
   boom()       { this._noise(0.45, 0.16); }
   pickup()     { this._tone(520, 0.09, 'sine', 0.05, 780); setTimeout(() => this._tone(880, 0.12, 'sine', 0.05, 1180), 80); }

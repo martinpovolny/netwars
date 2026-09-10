@@ -30,6 +30,14 @@ const ENEMY_BOLT_SPEED = 950;
 // drags every bolt sideways and misses even a motionless target.
 const BOLT_INHERIT = 0.4;
 
+// Guardian "lance": a slow-cadence, telegraphed, fast bright impulse instead
+// of the old laser-hose. Windup gives the player time to break the line.
+const LANCE_SPEED = 1500;
+const LANCE_GAP = [1.7, 2.7];   // seconds between shots
+const LANCE_CHARGE = 0.45;      // windup the player can read + juke
+const LANCE_TTL = 3.0;
+const LANCE_CONE = 0.955;       // ~17° firing cone (looser than a bolt's 0.985)
+
 // Where to aim so a bolt of speed ENEMY_BOLT_SPEED meets a target at `tpos`
 // moving at `tvel`. Exact closed form: with d = tpos - from and s the bolt
 // speed, solve |d + tvel·t| = s·t, i.e. the quadratic
@@ -37,9 +45,9 @@ const BOLT_INHERIT = 0.4;
 // for its one positive root (a < 0 and |d|² > 0 guarantee exactly one).
 // Falls back to `tpos` if the target somehow outruns the bolt. Writes the
 // predicted world position into `out` and returns it.
-function leadPoint(from, tpos, tvel, out) {
+function leadPoint(from, tpos, tvel, out, s = ENEMY_BOLT_SPEED) {
   const dx = tpos.x - from.x, dy = tpos.y - from.y, dz = tpos.z - from.z;
-  const a = tvel.lengthSq() - ENEMY_BOLT_SPEED * ENEMY_BOLT_SPEED;
+  const a = tvel.lengthSq() - s * s;
   const b = 2 * (dx * tvel.x + dy * tvel.y + dz * tvel.z);
   const c = dx * dx + dy * dy + dz * dz;
   let t = 0;
@@ -183,36 +191,78 @@ function pickPerch(e, player) {
   e.perch.copy(player.position).addScaledVector(off.normalize(), 1000 + _rng() * 500);
 }
 
+// A telegraphed lance shot, run every sniper tick. Charges for LANCE_CHARGE
+// seconds (readable windup), then releases a fast bright impulse along a fresh
+// lead. No velocity inheritance — it reads as an "impulse", and the lead solve
+// stays exact.
+function sniperFire(e, dt, ctx) {
+  const { player } = ctx;
+
+  if (e.charge > 0) {                       // winding up
+    e.charge -= dt;
+    if (e.charge <= 0) {
+      e.charge = 0;
+      const aim = leadPoint(e.position, player.position, player.velocity, _lead, LANCE_SPEED);
+      _d.copy(aim).sub(e.position).normalize();
+      const v = _d.clone().multiplyScalar(LANCE_SPEED);
+      ctx.weapons.spawn(e.position.clone().addScaledVector(_d, e.radius + 6), v, 'enemy', LANCE_TTL, null, 'lance');
+      ctx.fx?.enemyLance?.();
+      e.fireCd = LANCE_GAP[0] + _rng() * (LANCE_GAP[1] - LANCE_GAP[0]);
+    }
+    return;
+  }
+
+  e.fireCd -= dt;
+  if (e.fireCd > 0) return;
+  const aim = leadPoint(e.position, player.position, player.velocity, _lead, LANCE_SPEED);
+  _d.copy(aim).sub(e.position);
+  if (_d.length() > e.stats.fireRange) return;
+  _d.multiplyScalar(1 / Math.max(_d.length(), 1e-3));
+  if (_f.dot(_d) < LANCE_CONE) return;      // nose not lined up — keep tracking
+  e.charge = LANCE_CHARGE;                  // begin the telegraph
+  ctx.fx?.enemyLaser?.();
+}
+
 function sniper(e, dt, ctx) {
   const { player } = ctx;
-  if (e.state !== 'relocate' && e.state !== 'hold') { e.state = 'relocate'; pickPerch(e, player); }
+  if (e.state !== 'relocate' && e.state !== 'hold') { e.state = 'relocate'; e.stateT = 0; pickPerch(e, player); }
   const toPlayer = player.position.distanceTo(e.position);
 
   if (e.state === 'relocate') {
+    e.stateT += dt;
     const d = _d.copy(e.perch).sub(e.position);
     const dd = d.length();
     d.multiplyScalar(1 / Math.max(dd, 1e-3));
-    const closing = dd < 280;
+    const closing = dd < 300;
     const facePlayer = _side.copy(player.position).sub(e.position).normalize();
     fly(e, dt, closing ? facePlayer : d, {
       throttle: closing ? 0 : 1,
-      brakeAll: closing ? 1 : 0,
-      turn: e.stats.turn * 1.3,
-      vmax: e.vmax * 1.25,
+      brakeAll: closing ? 1.4 : 0,
+      turn: e.stats.turn * 1.4,
+      vmax: e.vmax * 1.2,
     });
-    if (dd < 130 && e.velocity.length() < 55) {
+    sniperFire(e, dt, ctx);   // opportunistic shot while repositioning
+    // settle into hold near the perch OR after a timeout — the old
+    // "dd<130 && v<55" condition was almost never met, so it orbited its
+    // perch forever firing nothing.
+    if ((dd < 240 && e.velocity.length() < 150) || e.stateT > 3.5) {
       e.state = 'hold';
       e.stateT = 0;
-      e.holdFor = 3.5 + _rng() * 2.5;
+      e.holdFor = 5 + _rng() * 3;
     }
   } else {
-    // hold the perch and track the intercept, not the player's current spot
-    const aim = leadPoint(e.position, player.position, player.velocity, _lead);
+    // hold and track the intercept, not the player's current spot
+    const aim = leadPoint(e.position, player.position, player.velocity, _lead, LANCE_SPEED);
     const d = _d.copy(aim).sub(e.position).normalize();
     fly(e, dt, d, { throttle: 0, brakeAll: 1.2, turn: e.stats.turn * 1.6 });
-    tryFire(e, dt, player.position, ctx, 0.985, player.velocity);
+    sniperFire(e, dt, ctx);
     e.stateT += dt;
-    if (e.stateT > e.holdFor || toPlayer < 480) { e.state = 'relocate'; pickPerch(e, player); }
+    if (e.stateT > e.holdFor || toPlayer < 360) {
+      e.charge = 0;
+      e.state = 'relocate';
+      e.stateT = 0;
+      pickPerch(e, player);
+    }
   }
 }
 

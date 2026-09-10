@@ -9,6 +9,7 @@ const (
 	teamEnemy  = "enemy"
 	kindBolt   = "bolt"
 	kindMsl    = "missile"
+	kindLance  = "lance" // Guardian's telegraphed impulse
 )
 
 type Projectiles struct {
