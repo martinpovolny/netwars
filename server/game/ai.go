@@ -69,6 +69,11 @@ type Enemy struct {
 	Flash      float64
 }
 
+// GuidePos / GuideDead satisfy guideTarget (weapons.go) — a player missile
+// locked on this enemy in co-op homes on it.
+func (e *Enemy) GuidePos() Vec3  { return e.Position }
+func (e *Enemy) GuideDead() bool { return e == nil || e.Dead }
+
 func sign(x float64) float64 {
 	if x > 0 {
 		return 1

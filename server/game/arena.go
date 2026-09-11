@@ -32,11 +32,12 @@ type Player struct {
 	lastSeq   int
 	wantGun   bool
 	wantMsl   bool
-	mslTarget int // enemy index the client locked, -1 = none
-	gunCd     float64
-	mslCd     float64
-	respawnCd float64 // >0 while dead and counting down to respawn
-	frags     int     // deathmatch kills
+	mslTarget       int    // enemy index the client locked, -1 = none
+	mslTargetPlayer string // deathmatch: id of the other player locked, "" = none
+	gunCd           float64
+	mslCd           float64
+	respawnCd       float64 // >0 while dead and counting down to respawn
+	frags           int     // deathmatch kills
 }
 
 func (p *Player) send(b []byte) {
@@ -202,6 +203,7 @@ func (a *Arena) applyInput(p *Player, in proto.Input) {
 		p.wantMsl = true
 	}
 	p.mslTarget = in.MslTarget
+	p.mslTargetPlayer = in.MslTargetPlayer
 }
 
 func (a *Arena) step() {
@@ -367,6 +369,16 @@ func (a *Arena) dmProjectiles() []Event {
 			if sp > 1e-3 && sp < kw["missileMaxSpeed"] {
 				pr.Vel[i].MultiplyScalar(1 + kw["missileSelfPropel"]*tickDT)
 			}
+			// home on the locked target once it's clear of the muzzle — this
+			// was missing entirely, so a locked deathmatch missile always flew
+			// dead straight regardless of the lock (twin of Projectiles.Step).
+			if pr.Age[i] > kw["missileGuideDelay"] {
+				if tgt := pr.Target[i]; tgt != nil && !tgt.GuideDead() {
+					desired := tgt.GuidePos()
+					desired.Sub(pr.Pos[i]).Normalize().MultiplyScalar(pr.Vel[i].Length())
+					pr.Vel[i].Lerp(desired, 1-math.Pow(kw["missileGuideRate"], tickDT))
+				}
+			}
 		}
 		pr.Pos[i].AddScaledVector(pr.Vel[i], tickDT)
 		if pr.Ttl[i] <= 0 {
@@ -507,15 +519,24 @@ func (a *Arena) fireWeapons(p *Player) {
 		vel := s.Vel
 		vel.AddScaledVector(fwdV, kp.MissileMuzzle)
 
-		// guide toward the enemy the client had locked (index into the
-		// snapshot's fleet), if it's still alive; else the missile is ballistic
-		var tgt *Enemy
+		// guide toward whatever the client had locked — an enemy (index into
+		// the snapshot's fleet, co-op) or another player's ship (deathmatch)
+		// — if it's still alive; else the missile is ballistic. `target` is
+		// declared as the interface and only ever assigned a genuine non-nil
+		// value, so it stays truly nil (not a non-nil interface wrapping a
+		// nil *Enemy) when nothing valid is locked.
+		var target guideTarget
 		if p.mslTarget >= 0 && p.mslTarget < len(a.world.Fleet.List) {
 			if e := a.world.Fleet.List[p.mslTarget]; !e.Dead {
-				tgt = e
+				target = e
 			}
 		}
-		a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.MissileLife, tgt, kindMsl, p.ID)
+		if target == nil && p.mslTargetPlayer != "" {
+			if v, ok := a.players[p.mslTargetPlayer]; ok && v.ID != p.ID && v.Ship.Alive {
+				target = v.Ship
+			}
+		}
+		a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.MissileLife, target, kindMsl, p.ID)
 	}
 	p.wantMsl = false
 }

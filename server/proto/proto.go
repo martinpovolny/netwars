@@ -61,6 +61,8 @@ type Input struct {
 	// index into the last snapshot's enemies[] the client has locked for a
 	// guided missile; -1 = none / ballistic.
 	MslTarget int `json:"mt"`
+	// deathmatch: id of the other player's ship locked instead, "" = none.
+	MslTargetPlayer string `json:"mp,omitempty"`
 }
 
 type Ping struct {

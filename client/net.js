@@ -227,15 +227,16 @@ function runOnline({ ws, welcome }, { mode, name }) {
   function computeLock(W, H) {
     if (!player.alive) return null;
     let best = null, bd = Infinity;
-    for (const e of enemies.list) {
-      if (e.dead) continue;
-      _ndc.copy(e.position).project(camera);
-      if (_ndc.z >= 1) continue;
+    const consider = (obj) => {
+      _ndc.copy(obj.position).project(camera);
+      if (_ndc.z >= 1) return;
       const sx = (_ndc.x * 0.5 + 0.5) * W, sy = (-_ndc.y * 0.5 + 0.5) * H;
-      if (Math.hypot(sx - W / 2, sy - H / 2) > LOCK_PX) continue;
-      const d = e.position.distanceToSquared(player.position);
-      if (d < bd) { bd = d; best = e; }
-    }
+      if (Math.hypot(sx - W / 2, sy - H / 2) > LOCK_PX) return;
+      const d = obj.position.distanceToSquared(player.position);
+      if (d < bd) { bd = d; best = obj; }
+    };
+    for (const e of enemies.list) if (!e.dead) consider(e);
+    if (dm) for (const o of world.others) if (o.alive) consider(o); // lock onto another player
     return best;
   }
 
@@ -260,14 +261,18 @@ function runOnline({ ws, welcome }, { mode, name }) {
     const n = ++seq;
     inputLog.push({ seq: n, ctrl, dt });
     if (inputLog.length > 240) inputLog.shift();
-    const mt = player.lockTarget ? enemies.list.indexOf(player.lockTarget) : -1;
+    // the lock is either an enemy (index into the fleet, co-op) or — in
+    // deathmatch — another player's ship (sent by id, no shared index space)
+    const enemyIdx = player.lockTarget ? enemies.list.indexOf(player.lockTarget) : -1;
+    const mt = enemyIdx >= 0 ? enemyIdx : -1;
+    const mp = enemyIdx < 0 && player.lockTarget ? (player.lockTarget.id || '') : '';
     ws.send(JSON.stringify({
       type: 'input', seq: n, t: performance.now(),
       ix: ctrl.intentX, iy: ctrl.intentY, roll, thrust,
       brake: ctrl.brake, boost: ctrl.boost, stop: ctrl.stop,
       gun: input.has('Space') || input.mouseFire,
       msl: input.has('KeyF') || input.mouseRight,
-      mt,
+      mt, mp,
     }));
   }
 

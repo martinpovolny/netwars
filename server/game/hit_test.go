@@ -189,6 +189,40 @@ func TestArenaDeathmatchGunHitsADeadCenterTarget(t *testing.T) {
 	}
 }
 
+// A missile locked on another player's ship (deathmatch) must actually home
+// in on it — not just fly ballistic. p2 sits well off p1's nose; a ballistic
+// shot flies straight past at ~300u (way outside any hit radius), so a hit
+// can only mean guidance pulled it in.
+func TestArenaDeathmatchMissileLocksOntoPlayer(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-msl", "dm", "dm-msl")
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+	p1.Ship.Pos = Vec3{}
+	p1.Ship.Quat = Quat{0, 0, 0, 1} // faces -Z
+	p1.Ship.Invuln = 0
+	p1.mslTarget = -1
+	p2.Ship.Pos = Vec3{X: 300, Z: -800} // off-axis: a ballistic shot misses by ~300u
+	p2.Ship.Invuln = 0
+	p2.Ship.Hull = p2.Ship.MaxHull
+
+	hit := false
+	for i := 0; i < 300 && !hit; i++ { // 5s
+		p1.wantMsl = true
+		p1.mslTargetPlayer = p2.ID
+		a.step()
+		if p2.Ship.Hull < p2.Ship.MaxHull {
+			hit = true
+		}
+	}
+	if !hit {
+		t.Fatalf("a missile locked on p2 never landed (hull still %v, missiles left %d)", p2.Ship.Hull, p1.Ship.Missiles)
+	}
+}
+
 // Deathmatch: ramming another player hurts both and, on a kill, frags for
 // the survivor.
 func TestArenaDeathmatchRam(t *testing.T) {

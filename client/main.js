@@ -20,12 +20,25 @@ const hash = location.hash.replace(/^#/, '');
 if (hash) {
   const [session, qs] = hash.split('?');
   const params = new URLSearchParams(qs || '');
+
+  // a callsign for the roster / scoreboard: ?name= wins, else whatever was
+  // remembered from last time, else ask once (and remember the answer) —
+  // without this everyone shows up as the bare "p1"/"p2" connection id.
+  let name = params.get('name') || '';
+  if (!name) {
+    try { name = localStorage.getItem('nw-name') || ''; } catch { /* private mode */ }
+  }
+  if (!name) {
+    try { name = (window.prompt('Callsign?', '') || '').trim().slice(0, 16); } catch { /* blocked */ }
+    if (name) { try { localStorage.setItem('nw-name', name); } catch { /* ignore */ } }
+  }
+
   const { startNetwork } = await import('./net.js');
   startNetwork({
     session,
     serverId: params.get('server_id'),
     mode: params.get('mode') || 'coop',
-    name: params.get('name') || '',
+    name,
   });
 } else {
   await import('./sp.js');
