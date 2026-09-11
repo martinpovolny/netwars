@@ -22,6 +22,11 @@ type Ship struct {
 	HitPulse    float64
 }
 
+// GuidePos / GuideDead satisfy guideTarget (weapons.go) — a deathmatch
+// missile locked on another player's ship homes on it.
+func (s *Ship) GuidePos() Vec3  { return s.Pos }
+func (s *Ship) GuideDead() bool { return s == nil || !s.Alive }
+
 // Damage — Player.damage without the audio side effect.
 func (s *Ship) Damage(amount float64) {
 	if !s.Alive || s.Invuln > 0 {
@@ -44,6 +49,8 @@ type Event struct {
 	Bonus    string      // bonusPicked: "missiles" | "repair"
 	Enemy    *Enemy      // enemyKilled: for scoring / kill feed
 	Action   LevelAction // level: what the FSM decided
+	Killer   string      // frag (dm): player id that scored the kill
+	Victim   string      // frag (dm): player id that died
 }
 
 type World struct {

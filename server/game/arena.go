@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/martinpovolny/netwars/server/proto"
@@ -15,7 +16,8 @@ const (
 	tickDT     = 1.0 / float64(tickHz)
 	outboxSize = 64
 
-	respawnDelay = 3.0 // seconds a dead co-op player waits before coming back
+	respawnDelay   = 3.0 // co-op: seconds a dead player waits before coming back
+	dmRespawnDelay = 2.5 // deathmatch: a touch quicker
 )
 
 // Player is one connected client inside an arena.
@@ -30,10 +32,12 @@ type Player struct {
 	lastSeq   int
 	wantGun   bool
 	wantMsl   bool
-	mslTarget int // enemy index the client locked, -1 = none
-	gunCd     float64
-	mslCd     float64
-	respawnCd float64 // >0 while dead and counting down to respawn
+	mslTarget       int    // enemy index the client locked, -1 = none
+	mslTargetPlayer string // deathmatch: id of the other player locked, "" = none
+	gunCd           float64
+	mslCd           float64
+	respawnCd       float64 // >0 while dead and counting down to respawn
+	frags           int     // deathmatch kills
 }
 
 func (p *Player) send(b []byte) {
@@ -60,6 +64,8 @@ type Arena struct {
 	leave chan *Player
 	in    chan arenaInput
 
+	dm bool // Mode == "dm" — no AI/pods, player-vs-player friendly fire, frags
+
 	// run()-only
 	players map[string]*Player
 	order   []string // join order; order[0] drives StepWorld's focus ship
@@ -72,6 +78,7 @@ type Arena struct {
 func newArena(k *Constants, session, mode, seed string) *Arena {
 	a := &Arena{
 		Session: session, Mode: mode, k: k,
+		dm:      mode == "dm",
 		world:   NewWorld(k, seed),
 		join:    make(chan *Player),
 		leave:   make(chan *Player),
@@ -117,7 +124,9 @@ func resetShip(s *Ship, k *Constants) {
 }
 
 func (a *Arena) run(ctx context.Context) {
-	a.world.StartWorldLevel(1, int(a.k.Pods["perLevel"]))
+	if !a.dm {
+		a.world.StartWorldLevel(1, int(a.k.Pods["perLevel"]))
+	}
 	sim := time.NewTicker(time.Second / tickHz)
 	defer sim.Stop()
 	log.Printf("arena %q (%s): started", a.Session, a.Mode)
@@ -131,15 +140,24 @@ func (a *Arena) run(ctx context.Context) {
 			a.nextID++
 			p.ID = "p" + itoa(a.nextID)
 			p.Ship = newShip(a.k)
-			p.Ship.Pos = spawnSlot(len(a.order)) // index this player is about to take
 			p.mslTarget = -1
 			a.players[p.ID] = p
 			a.order = append(a.order, p.ID)
-			p.send(proto.Marshal(proto.Welcome{
+			if a.dm {
+				p.Ship.Pos = a.dmSpawnPos()
+				p.Ship.Invuln = a.k.Player.InvulnOnRespawn
+			} else {
+				p.Ship.Pos = spawnSlot(len(a.order) - 1)
+			}
+			wel := proto.Welcome{
 				Type: proto.TypeWelcome, PlayerID: p.ID, Session: a.Session,
 				Mode: a.Mode, Tick: a.tick,
 				Snapshot: BuildSnapshot(a.world, a.tick, 0, p.Ship, a.othersOf(p)),
-			}))
+			}
+			if a.dm {
+				wel.Snapshot.Board = a.board()
+			}
+			p.send(proto.Marshal(wel))
 			log.Printf("arena %q: +%s (%d players)", a.Session, p.ID, len(a.players))
 
 		case p := <-a.leave:
@@ -185,9 +203,18 @@ func (a *Arena) applyInput(p *Player, in proto.Input) {
 		p.wantMsl = true
 	}
 	p.mslTarget = in.MslTarget
+	p.mslTargetPlayer = in.MslTargetPlayer
 }
 
 func (a *Arena) step() {
+	if a.dm {
+		a.stepDM()
+		return
+	}
+	a.stepCoop()
+}
+
+func (a *Arena) stepCoop() {
 	a.tick++
 
 	// integrate every ship from its input, then resolve its fire
@@ -265,6 +292,193 @@ func (a *Arena) step() {
 	}
 }
 
+// stepDM — the deathmatch tick: no fleet / pods / level FSM. Ships fly and
+// fire, bolts hurt every ship but their owner, a kill is a frag, the dead
+// respawn on a short timer.
+func (a *Arena) stepDM() {
+	a.tick++
+	a.world.Ships = a.world.Ships[:0]
+
+	for _, id := range a.order {
+		p := a.players[id]
+		if !p.Ship.Alive {
+			if p.respawnCd <= 0 {
+				p.respawnCd = dmRespawnDelay
+			}
+			if p.respawnCd -= tickDT; p.respawnCd <= 0 {
+				resetShip(p.Ship, a.k)
+				p.Ship.Pos = a.dmSpawnPos()
+				p.Ship.Invuln = a.k.Player.InvulnOnRespawn
+				p.respawnCd = 0
+			}
+			continue
+		}
+		p.respawnCd = 0
+		if p.Ship.Invuln > 0 {
+			if p.Ship.Invuln -= tickDT; p.Ship.Invuln < 0 {
+				p.Ship.Invuln = 0
+			}
+		}
+		if p.Ship.HitPulse > 0 {
+			if p.Ship.HitPulse -= tickDT * a.k.Player.HitPulseDecay; p.Ship.HitPulse < 0 {
+				p.Ship.HitPulse = 0
+			}
+		}
+		StepShip(p.Ship, p.ctrl, tickDT, a.k.Player)
+		a.fireWeapons(p)
+		a.world.Ships = append(a.world.Ships, p.Ship)
+	}
+
+	evs := a.dmRams()
+	evs = append(evs, a.dmProjectiles()...)
+
+	if pe := EventsToProto(evs); pe != nil {
+		b := proto.Marshal(proto.EventBatch{Type: proto.TypeEvent, Tick: a.tick, Events: pe})
+		for _, id := range a.order {
+			a.players[id].send(b)
+		}
+	}
+	if a.tick%snapEvery == 0 {
+		board := a.board()
+		for _, id := range a.order {
+			p := a.players[id]
+			s := BuildSnapshot(a.world, a.tick, p.lastSeq, p.Ship, a.othersOf(p))
+			s.Board = board
+			p.send(proto.Marshal(s))
+		}
+	}
+}
+
+// dmProjectiles advances the pool and resolves player-vs-player hits. Bolts
+// carry their firer's id (Owner) from fireWeapons, so a kill credits the
+// right player.
+func (a *Arena) dmProjectiles() []Event {
+	pr := a.world.Projectiles
+	kw := a.k.Weapons
+	var evs []Event
+
+	for i := 0; i < pr.Max; i++ {
+		if pr.Ttl[i] <= 0 {
+			continue
+		}
+		pr.Ttl[i] -= tickDT
+		pr.Age[i] += tickDT
+		isMsl := pr.Kind[i] == kindMsl
+		if isMsl {
+			sp := pr.Vel[i].Length()
+			if sp > 1e-3 && sp < kw["missileMaxSpeed"] {
+				pr.Vel[i].MultiplyScalar(1 + kw["missileSelfPropel"]*tickDT)
+			}
+			// home on the locked target once it's clear of the muzzle — this
+			// was missing entirely, so a locked deathmatch missile always flew
+			// dead straight regardless of the lock (twin of Projectiles.Step).
+			if pr.Age[i] > kw["missileGuideDelay"] {
+				if tgt := pr.Target[i]; tgt != nil && !tgt.GuideDead() {
+					desired := tgt.GuidePos()
+					desired.Sub(pr.Pos[i]).Normalize().MultiplyScalar(pr.Vel[i].Length())
+					pr.Vel[i].Lerp(desired, 1-math.Pow(kw["missileGuideRate"], tickDT))
+				}
+			}
+		}
+		pr.Pos[i].AddScaledVector(pr.Vel[i], tickDT)
+		if pr.Ttl[i] <= 0 {
+			continue
+		}
+
+		r := kw["playerHitRadius"]
+		dmg := kw["cannonDmg"]
+		if isMsl {
+			r += kw["missileHitPad"]
+			dmg = kw["missileDmg"]
+		}
+		for _, id := range a.order {
+			if id == pr.Owner[i] {
+				continue
+			}
+			vic := a.players[id]
+			if !vic.Ship.Alive {
+				continue
+			}
+			if pr.Pos[i].DistanceToSq(vic.Ship.Pos) < r*r {
+				absorbed := vic.Ship.Invuln > 0
+				vic.Ship.Damage(dmg)
+				pr.Ttl[i] = 0
+				evs = append(evs, Event{Kind: "playerHit", Pos: pr.Pos[i], Absorbed: absorbed})
+				if !absorbed && !vic.Ship.Alive {
+					if kr := a.players[pr.Owner[i]]; kr != nil {
+						kr.frags++
+					}
+					evs = append(evs, Event{Kind: "frag", Pos: vic.Ship.Pos, Killer: pr.Owner[i], Victim: id})
+				}
+				break
+			}
+		}
+	}
+	return evs
+}
+
+// dmRams — deathmatch ship-to-ship collisions. Both take ram damage and are
+// knocked apart; if one dies, the survivor is credited with the frag.
+func (a *Arena) dmRams() []Event {
+	ke := a.k.Enemy
+	rr := 2*a.k.Player.Radius + ke["ramDist"]
+	dmg := ke["ramDmg"]
+	kb := ke["ramKnockback"]
+	var evs []Event
+	for i := 0; i < len(a.order); i++ {
+		for j := i + 1; j < len(a.order); j++ {
+			pa, pb := a.players[a.order[i]], a.players[a.order[j]]
+			sa, sb := pa.Ship, pb.Ship
+			if !sa.Alive || !sb.Alive {
+				continue
+			}
+			if sa.Pos.DistanceToSq(sb.Pos) >= rr*rr {
+				continue
+			}
+			sa.Damage(dmg)
+			sb.Damage(dmg)
+			away := sa.Pos
+			away.Sub(sb.Pos).Normalize()
+			sa.Vel.AddScaledVector(away, kb)
+			sb.Vel.AddScaledVector(away, -kb)
+			evs = append(evs, Event{Kind: "ram", Pos: sa.Pos})
+			if !sa.Alive && sb.Alive {
+				pb.frags++
+				evs = append(evs, Event{Kind: "frag", Pos: sa.Pos, Killer: pb.ID, Victim: pa.ID})
+			}
+			if !sb.Alive && sa.Alive {
+				pa.frags++
+				evs = append(evs, Event{Kind: "frag", Pos: sb.Pos, Killer: pa.ID, Victim: pb.ID})
+			}
+		}
+	}
+	return evs
+}
+
+// board is the deathmatch scoreboard, highest frags first.
+func (a *Arena) board() []proto.ScoreS {
+	rows := make([]proto.ScoreS, 0, len(a.order))
+	for _, id := range a.order {
+		p := a.players[id]
+		name := p.Name
+		if name == "" {
+			name = id
+		}
+		rows = append(rows, proto.ScoreS{ID: id, Name: name, Frags: p.frags, Alive: p.Ship.Alive})
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Frags > rows[j].Frags })
+	return rows
+}
+
+// dmSpawnPos drops a respawning fighter onto a random point ~700 u out, so
+// players don't materialise on top of each other.
+func (a *Arena) dmSpawnPos() Vec3 {
+	var d Vec3
+	RandomDir(a.world.Rng, &d)
+	d.MultiplyScalar(550 + a.world.Rng.Float64()*400)
+	return d
+}
+
 // fireWeapons — the Go twin of the cannon / missile spawn in client/player.js.
 func (a *Arena) fireWeapons(p *Player) {
 	kp := a.k.Player
@@ -305,26 +519,35 @@ func (a *Arena) fireWeapons(p *Player) {
 		vel := s.Vel
 		vel.AddScaledVector(fwdV, kp.MissileMuzzle)
 
-		// guide toward the enemy the client had locked (index into the
-		// snapshot's fleet), if it's still alive; else the missile is ballistic
-		var tgt *Enemy
+		// guide toward whatever the client had locked — an enemy (index into
+		// the snapshot's fleet, co-op) or another player's ship (deathmatch)
+		// — if it's still alive; else the missile is ballistic. `target` is
+		// declared as the interface and only ever assigned a genuine non-nil
+		// value, so it stays truly nil (not a non-nil interface wrapping a
+		// nil *Enemy) when nothing valid is locked.
+		var target guideTarget
 		if p.mslTarget >= 0 && p.mslTarget < len(a.world.Fleet.List) {
 			if e := a.world.Fleet.List[p.mslTarget]; !e.Dead {
-				tgt = e
+				target = e
 			}
 		}
-		a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.MissileLife, tgt, kindMsl, p.ID)
+		if target == nil && p.mslTargetPlayer != "" {
+			if v, ok := a.players[p.mslTargetPlayer]; ok && v.ID != p.ID && v.Ship.Alive {
+				target = v.Ship
+			}
+		}
+		a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.MissileLife, target, kindMsl, p.ID)
 	}
 	p.wantMsl = false
 }
 
-func (a *Arena) othersOf(self *Player) []*Ship {
-	var out []*Ship
+func (a *Arena) othersOf(self *Player) []*Player {
+	var out []*Player
 	for _, id := range a.order {
 		if id == self.ID {
 			continue
 		}
-		out = append(out, a.players[id].Ship)
+		out = append(out, a.players[id])
 	}
 	return out
 }

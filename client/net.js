@@ -9,7 +9,7 @@
 // against ackSeq are M2.5b.
 import * as THREE from 'three';
 import { stepShip } from '../shared/sim/flight.js';
-import { Input } from './input.js';
+import { Input, goFullscreen, toggleFullscreen } from './input.js';
 import { Audio } from './audio.js';
 import { Player } from './player.js';
 import { Weapons } from './weapons.js';
@@ -27,14 +27,14 @@ import K from '../shared/constants.js';
 
 const HELLO_TIMEOUT = 6000;
 
-export async function startNetwork({ session, serverId, mode }) {
+export async function startNetwork({ session, serverId, mode, name }) {
   const host = serverId || location.host;
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${scheme}//${host}/ws`;
 
   let conn;
   try {
-    conn = await connect(url, { session, mode });
+    conn = await connect(url, { session, mode, name });
   } catch (err) {
     console.warn(
       `[netwars] could not join ${url} (${err && err.message || err}). Starting single-player.`,
@@ -43,19 +43,19 @@ export async function startNetwork({ session, serverId, mode }) {
     return;
   }
   console.log(`[netwars] joined ${url} as ${conn.welcome.playerId} (session "${session || 'default'}", ${mode})`);
-  runOnline(conn, { session, mode });
+  runOnline(conn, { session, mode, name });
 }
 
 // --- connection ---------------------------------------------------------
 
-function connect(url, { session, mode }) {
+function connect(url, { session, mode, name }) {
   return new Promise((resolve, reject) => {
     let ws;
     try { ws = new WebSocket(url); } catch (e) { reject(e); return; }
     const timer = setTimeout(() => { ws.close(); reject(new Error('welcome timed out')); }, HELLO_TIMEOUT);
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'hello', session: session || 'default', mode: mode || 'coop' }));
+      ws.send(JSON.stringify({ type: 'hello', session: session || 'default', mode: mode || 'coop', name: name || '' }));
     };
     ws.onerror = () => { clearTimeout(timer); reject(new Error('socket error')); };
     ws.onclose = () => { clearTimeout(timer); reject(new Error('closed before welcome')); };
@@ -73,7 +73,9 @@ function connect(url, { session, mode }) {
 
 // --- the online game ---------------------------------------------------
 
-function runOnline({ ws, welcome }, { mode }) {
+function runOnline({ ws, welcome }, { mode, name }) {
+  const dm = (mode || welcome.mode) === 'dm';   // deathmatch: PvP, frags, no AI
+  const myName = name || welcome.playerId;
   // ---- render shell (mirrors client/sp.js) --------------------------
   const canvas = document.getElementById('view');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -115,6 +117,7 @@ function runOnline({ ws, welcome }, { mode }) {
     fsm: { state: welcome.snapshot.fsm || 'playing' },
     score: welcome.snapshot.score || 0,
     others: [],           // other players' ships (meshes)
+    board: welcome.snapshot.board || [],   // deathmatch scoreboard
   };
   const inputLog = [];   // { seq, ctrl, dt } — a sent input, kept until the server acks it
 
@@ -153,6 +156,10 @@ function runOnline({ ws, welcome }, { mode }) {
       world.others[i].tquat.set(o.q[0], o.q[1], o.q[2], o.q[3]);
       world.others[i].alive = o.alive;
       world.others[i].color = color;
+      world.others[i].id = o.id;
+      world.others[i].name = o.n || o.id;
+      world.others[i].hull = o.hull;
+      world.others[i].maxHull = o.maxHull || K.player.maxHull;
     }
     for (let i = list.length; i < otherMeshes.length; i++) scene.remove(otherMeshes[i]);
     otherMeshes.length = list.length;
@@ -182,9 +189,10 @@ function runOnline({ ws, welcome }, { mode }) {
     paused: false, get score() { return world.score; }, get state() { return world.fsm.state; },
   };
 
-  canvas.addEventListener('mousedown', () => { audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
+  canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    if (e.code === 'Enter') { toggleFullscreen(); return; }
     if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
     if (e.code === 'KeyH') hud.showHelp(4);
     if (e.code === 'BracketRight' || e.code === 'Equal') { radar.zoom(1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
@@ -219,15 +227,16 @@ function runOnline({ ws, welcome }, { mode }) {
   function computeLock(W, H) {
     if (!player.alive) return null;
     let best = null, bd = Infinity;
-    for (const e of enemies.list) {
-      if (e.dead) continue;
-      _ndc.copy(e.position).project(camera);
-      if (_ndc.z >= 1) continue;
+    const consider = (obj) => {
+      _ndc.copy(obj.position).project(camera);
+      if (_ndc.z >= 1) return;
       const sx = (_ndc.x * 0.5 + 0.5) * W, sy = (-_ndc.y * 0.5 + 0.5) * H;
-      if (Math.hypot(sx - W / 2, sy - H / 2) > LOCK_PX) continue;
-      const d = e.position.distanceToSquared(player.position);
-      if (d < bd) { bd = d; best = e; }
-    }
+      if (Math.hypot(sx - W / 2, sy - H / 2) > LOCK_PX) return;
+      const d = obj.position.distanceToSquared(player.position);
+      if (d < bd) { bd = d; best = obj; }
+    };
+    for (const e of enemies.list) if (!e.dead) consider(e);
+    if (dm) for (const o of world.others) if (o.alive) consider(o); // lock onto another player
     return best;
   }
 
@@ -252,14 +261,18 @@ function runOnline({ ws, welcome }, { mode }) {
     const n = ++seq;
     inputLog.push({ seq: n, ctrl, dt });
     if (inputLog.length > 240) inputLog.shift();
-    const mt = player.lockTarget ? enemies.list.indexOf(player.lockTarget) : -1;
+    // the lock is either an enemy (index into the fleet, co-op) or — in
+    // deathmatch — another player's ship (sent by id, no shared index space)
+    const enemyIdx = player.lockTarget ? enemies.list.indexOf(player.lockTarget) : -1;
+    const mt = enemyIdx >= 0 ? enemyIdx : -1;
+    const mp = enemyIdx < 0 && player.lockTarget ? (player.lockTarget.id || '') : '';
     ws.send(JSON.stringify({
       type: 'input', seq: n, t: performance.now(),
       ix: ctrl.intentX, iy: ctrl.intentY, roll, thrust,
       brake: ctrl.brake, boost: ctrl.boost, stop: ctrl.stop,
       gun: input.has('Space') || input.mouseFire,
       msl: input.has('KeyF') || input.mouseRight,
-      mt,
+      mt, mp,
     }));
   }
 
@@ -280,6 +293,14 @@ function runOnline({ ws, welcome }, { mode }) {
       case 'playerHit': explosions.spark(pos); if (!ev.absorbed) audio.hit(); break;
       case 'podHit': explosions.spark(pos); break;
       case 'podKill': explosions.blast(pos, 0xff5ad0); audio.boom(); hud.flash('POD DOWN', 1.0); break;
+      case 'frag': {
+        explosions.blast(pos, 0xff3a24); audio.boom();
+        const nameOf = (id) => { const r = (world.board || []).find((x) => x.id === id); return r ? r.n : id; };
+        if (ev.kr === welcome.playerId) hud.flash(`FRAGGED ${nameOf(ev.vk)}`, 1.6);
+        else if (ev.vk === welcome.playerId) hud.flash(`${nameOf(ev.kr)} FRAGGED YOU`, 1.8);
+        else hud.flash(`${nameOf(ev.kr)} ▸ ${nameOf(ev.vk)}`, 1.1);
+        break;
+      }
       case 'level':
         // two events cross a transition: the won/lost banner (has flash) and
         // the actual (re)start (has start). Only the restart resets the ship —
@@ -300,6 +321,7 @@ function runOnline({ ws, welcome }, { mode }) {
   function applySnapshot(s, first) {
     world.fleet.level = s.level;
     world.fleet.goals = s.goals || {};
+    if (s.board) world.board = s.board;
     world.score = s.score;
     world.fsm.state = s.fsm;
 
@@ -367,6 +389,7 @@ function runOnline({ ws, welcome }, { mode }) {
       dst.tquat.set(src.q[0], src.q[1], src.q[2], src.q[3]);
       dst.velocity.set(src.v[0], src.v[1], src.v[2]);
       dst.hp = src.hp;
+      dst.charge = src.ch || 0;   // Guardian lance telegraph
     });
 
     syncList(world.pods.list, s.pods || [], (dst, src) => {
@@ -509,11 +532,19 @@ function runOnline({ ws, welcome }, { mode }) {
     const lockTarget = computeLock(W, H);
     player.lockTarget = lockTarget;
     hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
+    const roster = [{ id: welcome.playerId, n: myName, hull: player.hull, maxHull: player.maxHull, a: player.alive }];
+    for (const o of world.others) roster.push({ id: o.id, n: o.name, hull: o.hull, maxHull: o.maxHull, a: o.alive });
+
     hud.update(dt, player, enemies, pods, world.score, radar, {
       locked: !!lockTarget,
       missileActive: weapons.playerMissileActive(),
       missileGuided: weapons.playerMissileGuided(),
       rtt,
+      dm,
+      online: true,
+      board: world.board,
+      roster,
+      selfId: welcome.playerId,
     });
   }
   requestAnimationFrame(frame);

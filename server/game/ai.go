@@ -11,6 +11,16 @@ const enemyBoltSpeed = 950.0
 // solve compensates for it (twin of shared/sim/ai.js BOLT_INHERIT).
 const boltInherit = 0.4
 
+// Guardian "lance" — telegraphed, fast, spaced (twin of shared/sim/ai.js).
+const (
+	lanceSpeed  = 1500.0
+	lanceGapMin = 1.7
+	lanceGapMax = 2.7
+	lanceCharge = 0.45
+	lanceTTL    = 3.0
+	lanceCone   = 0.955
+)
+
 var fwd = Vec3{0, 0, -1}
 var up = Vec3{0, 1, 0}
 
@@ -50,6 +60,7 @@ type Enemy struct {
 	State      string
 	StateT     float64
 	HoldFor    float64
+	Charge     float64 // Guardian lance windup (seconds remaining)
 	Perch      Vec3
 	MovePos    Vec3
 	AimPos     Vec3
@@ -57,6 +68,11 @@ type Enemy struct {
 	HaulStart  Vec3
 	Flash      float64
 }
+
+// GuidePos / GuideDead satisfy guideTarget (weapons.go) — a player missile
+// locked on this enemy in co-op homes on it.
+func (e *Enemy) GuidePos() Vec3  { return e.Position }
+func (e *Enemy) GuideDead() bool { return e == nil || e.Dead }
 
 func sign(x float64) float64 {
 	if x > 0 {
@@ -88,8 +104,12 @@ func nearestPod(pos Vec3, pods *Pods) *Pod {
 // d = tpos-from and s the bolt speed, solve |d + tvel*t| = s*t, i.e.
 // (|tvel|^2 - s^2) t^2 + 2(d.tvel) t + |d|^2 = 0, for its one positive root.
 func leadPoint(from, tpos, tvel Vec3, out *Vec3) *Vec3 {
+	return leadPointS(from, tpos, tvel, out, enemyBoltSpeed)
+}
+
+func leadPointS(from, tpos, tvel Vec3, out *Vec3, s float64) *Vec3 {
 	dx, dy, dz := tpos.X-from.X, tpos.Y-from.Y, tpos.Z-from.Z
-	a := tvel.LengthSq() - enemyBoltSpeed*enemyBoltSpeed
+	a := tvel.LengthSq() - s*s
 	b := 2 * (dx*tvel.X + dy*tvel.Y + dz*tvel.Z)
 	c := dx*dx + dy*dy + dz*dz
 	t := 0.0
@@ -316,20 +336,63 @@ func pickPerch(e *Enemy, playerPos Vec3, rng *Rng) {
 	e.Perch.AddScaledVector(off, 1000+rng.Float64()*500)
 }
 
+// sniperFire — twin of shared/sim/ai.js sniperFire. Telegraphed lance: charge
+// LANCE_CHARGE s, then release a fast bright impulse along a fresh lead.
+func sniperFire(e *Enemy, dt float64, w *World) {
+	player := w.aimShip(e.Position)
+
+	if e.Charge > 0 {
+		e.Charge -= dt
+		if e.Charge <= 0 {
+			e.Charge = 0
+			var lead Vec3
+			leadPointS(e.Position, player.Pos, player.Vel, &lead, lanceSpeed)
+			d := lead
+			d.Sub(e.Position).Normalize()
+			v := d
+			v.MultiplyScalar(lanceSpeed)
+			muzzle := e.Position
+			muzzle.AddScaledVector(d, e.Radius+6)
+			w.Projectiles.Spawn(muzzle, v, teamEnemy, lanceTTL, nil, kindLance, "")
+			e.FireCd = lanceGapMin + w.Rng.Float64()*(lanceGapMax-lanceGapMin)
+		}
+		return
+	}
+
+	e.FireCd -= dt
+	if e.FireCd > 0 {
+		return
+	}
+	var lead Vec3
+	leadPointS(e.Position, player.Pos, player.Vel, &lead, lanceSpeed)
+	d := lead
+	d.Sub(e.Position)
+	if d.Length() > e.Stats.FireRange {
+		return
+	}
+	d.MultiplyScalar(1 / math.Max(d.Length(), 1e-3))
+	if fwdDot(e, d) < lanceCone {
+		return
+	}
+	e.Charge = lanceCharge
+}
+
 func sniper(e *Enemy, dt float64, w *World) {
 	player := w.aimShip(e.Position)
 	if e.State != "relocate" && e.State != "hold" {
 		e.State = "relocate"
+		e.StateT = 0
 		pickPerch(e, player.Pos, w.Rng)
 	}
 	toPlayer := player.Pos.DistanceTo(e.Position)
 
 	if e.State == "relocate" {
+		e.StateT += dt
 		d := e.Perch
 		d.Sub(e.Position)
 		dd := d.Length()
 		d.MultiplyScalar(1 / math.Max(dd, 1e-3))
-		closing := dd < 280
+		closing := dd < 300
 		facePlayer := player.Pos
 		facePlayer.Sub(e.Position).Normalize()
 
@@ -339,25 +402,27 @@ func sniper(e *Enemy, dt float64, w *World) {
 		if closing {
 			aim = facePlayer
 			throttle = 0
-			brakeAll = 1
+			brakeAll = 1.4
 		}
-		fly(e, dt, aim, flyOpts{throttle: throttle, brakeAll: brakeAll, turn: e.Stats.Turn * 1.3, vmax: e.Vmax * 1.25, set: optTurn | optVmax})
-		if dd < 130 && e.Velocity.Length() < 55 {
+		fly(e, dt, aim, flyOpts{throttle: throttle, brakeAll: brakeAll, turn: e.Stats.Turn * 1.4, vmax: e.Vmax * 1.2, set: optTurn | optVmax})
+		sniperFire(e, dt, w)
+		if (dd < 240 && e.Velocity.Length() < 150) || e.StateT > 3.5 {
 			e.State = "hold"
 			e.StateT = 0
-			e.HoldFor = 3.5 + w.Rng.Float64()*2.5
+			e.HoldFor = 5 + w.Rng.Float64()*3
 		}
 	} else {
 		var lead Vec3
-		leadPoint(e.Position, player.Pos, player.Vel, &lead)
+		leadPointS(e.Position, player.Pos, player.Vel, &lead, lanceSpeed)
 		d := lead
 		d.Sub(e.Position).Normalize()
 		fly(e, dt, d, flyOpts{throttle: 0, brakeAll: 1.2, turn: e.Stats.Turn * 1.6, set: optTurn})
-		pv := player.Vel
-		tryFire(e, dt, player.Pos, w, 0.985, &pv)
+		sniperFire(e, dt, w)
 		e.StateT += dt
-		if e.StateT > e.HoldFor || toPlayer < 480 {
+		if e.StateT > e.HoldFor || toPlayer < 360 {
+			e.Charge = 0
 			e.State = "relocate"
+			e.StateT = 0
 			pickPerch(e, player.Pos, w.Rng)
 		}
 	}

@@ -39,7 +39,7 @@
     "enemyBoltSpeed": 950,
     "enemyBoltInheritVel": 0.4,
     "enemyBoltMuzzleOffset": 4,
-    "playerHitRadius": 10,
+    "playerHitRadius": 26,
     "missileSelfPropel": 1.6,
     "missileMaxSpeed": 1500,
     "missileGuideDelay": 0.35,

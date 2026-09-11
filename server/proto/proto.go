@@ -61,6 +61,8 @@ type Input struct {
 	// index into the last snapshot's enemies[] the client has locked for a
 	// guided missile; -1 = none / ballistic.
 	MslTarget int `json:"mt"`
+	// deathmatch: id of the other player's ship locked instead, "" = none.
+	MslTargetPlayer string `json:"mp,omitempty"`
 }
 
 type Ping struct {
@@ -84,10 +86,12 @@ type Quat [4]float64
 
 type ShipS struct {
 	ID       string  `json:"id"`
+	Name     string  `json:"n,omitempty"`
 	Pos      Vec3    `json:"p"`
 	Vel      Vec3    `json:"v"`
 	Quat     Quat    `json:"q"`
 	Hull     float64 `json:"hull"`
+	MaxHull  float64 `json:"maxHull,omitempty"`
 	Missiles int     `json:"msl"`
 	Alive    bool    `json:"alive"`
 }
@@ -99,6 +103,7 @@ type EnemyS struct {
 	Vel  Vec3    `json:"v"`
 	Quat Quat    `json:"q"`
 	HP   float64 `json:"hp"`
+	Ch   float64 `json:"ch,omitempty"` // Guardian lance windup (drives the client's telegraph glow)
 }
 
 type PodS struct {
@@ -136,6 +141,15 @@ type Snapshot struct {
 	Pods     []PodS   `json:"pods"`
 	Bonuses  []BonusS `json:"bonuses"`
 	Proj     []ProjS  `json:"proj"`
+	Board    []ScoreS `json:"board,omitempty"` // deathmatch scoreboard
+}
+
+// ScoreS is one row of the deathmatch scoreboard.
+type ScoreS struct {
+	ID    string `json:"id"`
+	Name  string `json:"n"`
+	Frags int    `json:"f"`
+	Alive bool   `json:"a"`
 }
 
 type EventS struct {
@@ -150,6 +164,9 @@ type EventS struct {
 	// level events: Start marks the actual (re)start tick (vs the earlier
 	// won/lost banner) so the client resets its ship exactly once.
 	Start bool `json:"start,omitempty"`
+	// frag events (deathmatch): who killed whom.
+	Killer string `json:"kr,omitempty"`
+	Victim string `json:"vk,omitempty"`
 }
 
 type EventBatch struct {

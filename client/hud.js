@@ -11,6 +11,7 @@ export class HUD {
     this.help = document.getElementById('help');
     this.obj = document.getElementById('obj');
     this.podsEl = document.getElementById('pods');
+    this.board = document.getElementById('board');
     this.net = document.getElementById('net');
     this.intent = document.getElementById('intent');
     this.mouse = document.getElementById('mouse');
@@ -66,9 +67,13 @@ export class HUD {
     // red damage vignette
     if (this.hitFlash) this.hitFlash.style.opacity = (player.hitPulse * 0.9).toFixed(3);
 
+    const dm = !!(lock && lock.dm);
+
     this.dead.style.display = player.alive ? 'none' : 'block';
     if (!player.alive && this.deadSub) {
-      this.deadSub.textContent = `Level ${enemies.level}   Score ${String(score).padStart(6, '0')}`;
+      this.deadSub.textContent = dm
+        ? 'FRAGGED — respawning'
+        : `Level ${enemies.level}   Score ${String(score).padStart(6, '0')}`;
     }
 
     // reticle: deployed intent marker + raw mouse cursor
@@ -88,22 +93,53 @@ export class HUD {
       }
     }
 
-    const parts = [`Level ${enemies.level}`];
-    for (const k of Object.keys(enemies.goals)) {
-      if (enemies.goals[k] > 0) parts.push(`${ENEMY_TYPES[k].name}×${enemies.goals[k]}`);
+    const escName = (s) => String(s).slice(0, 16).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+
+    if (dm) {
+      // deathmatch: the top HUD is a frag scoreboard, not level objectives
+      this.obj.style.display = 'none';
+      if (this.podsEl) this.podsEl.style.display = 'none';
+      if (this.board) {
+        this.board.style.display = 'block';
+        this.board.innerHTML = '<div class="btitle">FRAGS</div>' + (lock.board || [])
+          .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${escName(r.n)}</span><span class="frag">${r.f | 0}</span></div>`)
+          .join('');
+      }
+    } else {
+      this.obj.style.display = '';
+      if (this.podsEl) this.podsEl.style.display = '';
+      const parts = [`Level ${enemies.level}`];
+      for (const k of Object.keys(enemies.goals)) {
+        if (enemies.goals[k] > 0) parts.push(`${ENEMY_TYPES[k].name}×${enemies.goals[k]}`);
+      }
+      this.obj.textContent = parts.join('   ');
+
+      // co-op: a standing roster — who's connected + their shield/hull %
+      const roster = lock && lock.online ? lock.roster : null;
+      if (this.board && roster && roster.length) {
+        this.board.style.display = 'block';
+        this.board.innerHTML = `<div class="btitle">PLAYERS ${roster.length}</div>` + roster
+          .map((r) => {
+            const pct = Math.max(0, Math.round(100 * (r.hull / (r.maxHull || 1))));
+            const cls = r.id === lock.selfId ? ' me' : '';
+            const hpCls = !r.a ? ' out' : pct < 28 ? ' crit' : pct < 55 ? ' warn' : '';
+            return `<div class="brow${cls}"><span>${escName(r.n)}</span><span class="hp${hpCls}">${r.a ? pct + '%' : 'OUT'}</span></div>`;
+          })
+          .join('');
+      } else if (this.board) {
+        this.board.style.display = 'none';
+      }
+      if (this.podsEl) {
+        this.podsEl.textContent = `Pods ${pods.alive}/${pods.total}`;
+        this.podsEl.classList.toggle('crit', pods.alive <= 2);
+      }
     }
-    this.obj.textContent = parts.join('   ');
 
     if (radar && this.radarLabel) {
       this.radarLabel.textContent = `Scanner  Z${radar.zoomLevel}/${radar.maxZoom} · ${radar.range}`;
     }
 
     if (this.net) this.net.textContent = lock && lock.rtt ? `RTT ${Math.round(lock.rtt)} ms` : '';
-
-    if (this.podsEl) {
-      this.podsEl.textContent = `Pods ${pods.alive}/${pods.total}`;
-      this.podsEl.classList.toggle('crit', pods.alive <= 2);
-    }
 
     if (this._flash > 0) {
       this._flash -= dt;

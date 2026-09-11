@@ -9,7 +9,15 @@ const (
 	teamEnemy  = "enemy"
 	kindBolt   = "bolt"
 	kindMsl    = "missile"
+	kindLance  = "lance" // Guardian's telegraphed impulse
 )
+
+// guideTarget is anything a guided missile can home on — an enemy in co-op,
+// or another player's ship in deathmatch.
+type guideTarget interface {
+	GuidePos() Vec3
+	GuideDead() bool
+}
 
 type Projectiles struct {
 	K      Block // constants.weapons
@@ -21,7 +29,7 @@ type Projectiles struct {
 	Team   []string
 	Kind   []string
 	Owner  []string // player id that fired it ("" for enemy shots)
-	Target []*Enemy
+	Target []guideTarget
 	Cursor int
 }
 
@@ -33,11 +41,11 @@ func newProjectiles(kw Block) *Projectiles {
 		Ttl: make([]float64, n), Age: make([]float64, n),
 		Team: make([]string, n), Kind: make([]string, n),
 		Owner:  make([]string, n),
-		Target: make([]*Enemy, n),
+		Target: make([]guideTarget, n),
 	}
 }
 
-func (p *Projectiles) Spawn(pos, vel Vec3, team string, ttl float64, target *Enemy, kind, owner string) {
+func (p *Projectiles) Spawn(pos, vel Vec3, team string, ttl float64, target guideTarget, kind, owner string) {
 	i := p.Cursor
 	p.Cursor = (p.Cursor + 1) % p.Max
 	p.Pos[i] = pos
@@ -83,8 +91,8 @@ func (p *Projectiles) Step(dt float64, w *World) []Event {
 			}
 			if p.Age[i] > kw["missileGuideDelay"] {
 				tgt := p.Target[i]
-				if tgt != nil && !tgt.Dead {
-					desired := tgt.Position
+				if tgt != nil && !tgt.GuideDead() {
+					desired := tgt.GuidePos()
 					desired.Sub(p.Pos[i]).Normalize().MultiplyScalar(p.Vel[i].Length())
 					p.Vel[i].Lerp(desired, 1-math.Pow(kw["missileGuideRate"], dt))
 				}

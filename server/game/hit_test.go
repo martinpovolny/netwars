@@ -99,6 +99,167 @@ func TestArenaInvulnDecaysAndHitsLand(t *testing.T) {
 	}
 }
 
+// Deathmatch: no fleet, a bolt frags another player, the dead respawn.
+func TestArenaDeathmatch(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm", "dm", "dm-seed")
+	if !a.dm {
+		t.Fatal("arena not in dm mode")
+	}
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+	p2.Ship.Pos = Vec3{X: 400}
+	p2.Ship.Invuln = 0
+	p2.Ship.Hull = 5 // one bolt kills
+
+	// p1 fires a bolt sitting on p2
+	a.world.Projectiles.Spawn(p2.Ship.Pos, Vec3{}, teamPlayer, 3.0, nil, kindBolt, p1.ID)
+	evs := a.dmProjectiles()
+
+	if p2.Ship.Alive {
+		t.Fatalf("victim survived a lethal bolt: hull %v", p2.Ship.Hull)
+	}
+	if p1.frags != 1 {
+		t.Fatalf("killer frags = %d, want 1", p1.frags)
+	}
+	var frag *Event
+	for i := range evs {
+		if evs[i].Kind == "frag" {
+			frag = &evs[i]
+		}
+	}
+	if frag == nil || frag.Killer != p1.ID || frag.Victim != p2.ID {
+		t.Fatalf("frag event = %+v", frag)
+	}
+
+	// no AI ever spawns in dm
+	if len(a.world.Fleet.List) != 0 {
+		t.Fatalf("dm arena has %d enemies", len(a.world.Fleet.List))
+	}
+
+	// the dead player respawns after the timer
+	revived := false
+	for i := 0; i < int(dmRespawnDelay/tickDT)+30; i++ {
+		a.step()
+		if p2.Ship.Alive {
+			revived = true
+			break
+		}
+	}
+	if !revived || p2.Ship.Hull != p2.Ship.MaxHull {
+		t.Fatalf("dm respawn failed: alive=%v hull=%v", p2.Ship.Alive, p2.Ship.Hull)
+	}
+
+	board := a.board()
+	if len(board) != 2 || board[0].ID != p1.ID || board[0].Frags != 1 {
+		t.Fatalf("scoreboard = %+v", board)
+	}
+}
+
+// The twin cannon fires two bolts offset +-GunHardpoint.Side (18u) off the
+// nose centreline — they never converge back onto it. A dead-center-aimed
+// shot at another player therefore always passes the target at ~18u, so
+// playerHitRadius has to clear that or gunfire can never land in deathmatch
+// (it used to be 10 — this exercises the real fireWeapons() muzzle geometry,
+// not an idealised on-target bolt, to catch exactly that class of bug).
+func TestArenaDeathmatchGunHitsADeadCenterTarget(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-gun", "dm", "dm-gun")
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+	p1.Ship.Pos = Vec3{}
+	p1.Ship.Quat = Quat{0, 0, 0, 1} // faces -Z
+	p1.Ship.Invuln = 0
+	p2.Ship.Pos = Vec3{Z: -400} // dead ahead, stationary
+	p2.Ship.Invuln = 0
+	p2.Ship.Hull = p2.Ship.MaxHull
+
+	for i := 0; i < 150 && p2.Ship.Hull >= p2.Ship.MaxHull; i++ { // 2.5s, ~20 bolts
+		p1.wantGun = true
+		a.step()
+	}
+	if p2.Ship.Hull >= p2.Ship.MaxHull {
+		t.Fatalf("a sustained dead-center shot never landed (hull still %v)", p2.Ship.Hull)
+	}
+}
+
+// A missile locked on another player's ship (deathmatch) must actually home
+// in on it — not just fly ballistic. p2 sits well off p1's nose; a ballistic
+// shot flies straight past at ~300u (way outside any hit radius), so a hit
+// can only mean guidance pulled it in.
+func TestArenaDeathmatchMissileLocksOntoPlayer(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-msl", "dm", "dm-msl")
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+	p1.Ship.Pos = Vec3{}
+	p1.Ship.Quat = Quat{0, 0, 0, 1} // faces -Z
+	p1.Ship.Invuln = 0
+	p1.mslTarget = -1
+	p2.Ship.Pos = Vec3{X: 300, Z: -800} // off-axis: a ballistic shot misses by ~300u
+	p2.Ship.Invuln = 0
+	p2.Ship.Hull = p2.Ship.MaxHull
+
+	hit := false
+	for i := 0; i < 300 && !hit; i++ { // 5s
+		p1.wantMsl = true
+		p1.mslTargetPlayer = p2.ID
+		a.step()
+		if p2.Ship.Hull < p2.Ship.MaxHull {
+			hit = true
+		}
+	}
+	if !hit {
+		t.Fatalf("a missile locked on p2 never landed (hull still %v, missiles left %d)", p2.Ship.Hull, p1.Ship.Missiles)
+	}
+}
+
+// Deathmatch: ramming another player hurts both and, on a kill, frags for
+// the survivor.
+func TestArenaDeathmatchRam(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-ram", "dm", "dm-ram")
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+	p1.Ship.Pos = Vec3{}
+	p1.Ship.Invuln, p1.Ship.Hull = 0, 5
+	p2.Ship.Pos = Vec3{X: 10} // overlapping
+	p2.Ship.Invuln, p2.Ship.Hull = 0, p2.Ship.MaxHull
+
+	evs := a.dmRams()
+
+	if p1.Ship.Alive {
+		t.Fatalf("rammed low-hull ship survived: %v", p1.Ship.Hull)
+	}
+	if p2.Ship.Hull >= p2.Ship.MaxHull {
+		t.Fatalf("rammer took no damage: %v", p2.Ship.Hull)
+	}
+	if p2.frags != 1 {
+		t.Fatalf("survivor frags = %d, want 1", p2.frags)
+	}
+	gotFrag := false
+	for _, e := range evs {
+		if e.Kind == "frag" && e.Killer == p2.ID && e.Victim == p1.ID {
+			gotFrag = true
+		}
+	}
+	if !gotFrag {
+		t.Fatalf("no frag event for the ram kill: %+v", evs)
+	}
+}
+
 // A dead co-op player respawns on its own after respawnDelay; the others
 // keep playing and the level does not restart.
 func TestArenaIndependentRespawn(t *testing.T) {
