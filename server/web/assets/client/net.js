@@ -43,7 +43,7 @@ export async function startNetwork({ session, serverId, mode, name }) {
     return;
   }
   console.log(`[netwars] joined ${url} as ${conn.welcome.playerId} (session "${session || 'default'}", ${mode})`);
-  runOnline(conn, { session, mode });
+  runOnline(conn, { session, mode, name });
 }
 
 // --- connection ---------------------------------------------------------
@@ -73,8 +73,9 @@ function connect(url, { session, mode, name }) {
 
 // --- the online game ---------------------------------------------------
 
-function runOnline({ ws, welcome }, { mode }) {
+function runOnline({ ws, welcome }, { mode, name }) {
   const dm = (mode || welcome.mode) === 'dm';   // deathmatch: PvP, frags, no AI
+  const myName = name || welcome.playerId;
   // ---- render shell (mirrors client/sp.js) --------------------------
   const canvas = document.getElementById('view');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -155,6 +156,10 @@ function runOnline({ ws, welcome }, { mode }) {
       world.others[i].tquat.set(o.q[0], o.q[1], o.q[2], o.q[3]);
       world.others[i].alive = o.alive;
       world.others[i].color = color;
+      world.others[i].id = o.id;
+      world.others[i].name = o.n || o.id;
+      world.others[i].hull = o.hull;
+      world.others[i].maxHull = o.maxHull || K.player.maxHull;
     }
     for (let i = list.length; i < otherMeshes.length; i++) scene.remove(otherMeshes[i]);
     otherMeshes.length = list.length;
@@ -522,13 +527,18 @@ function runOnline({ ws, welcome }, { mode }) {
     const lockTarget = computeLock(W, H);
     player.lockTarget = lockTarget;
     hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
+    const roster = [{ id: welcome.playerId, n: myName, hull: player.hull, maxHull: player.maxHull, a: player.alive }];
+    for (const o of world.others) roster.push({ id: o.id, n: o.name, hull: o.hull, maxHull: o.maxHull, a: o.alive });
+
     hud.update(dt, player, enemies, pods, world.score, radar, {
       locked: !!lockTarget,
       missileActive: weapons.playerMissileActive(),
       missileGuided: weapons.playerMissileGuided(),
       rtt,
       dm,
+      online: true,
       board: world.board,
+      roster,
       selfId: welcome.playerId,
     });
   }

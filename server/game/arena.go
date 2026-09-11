@@ -520,13 +520,13 @@ func (a *Arena) fireWeapons(p *Player) {
 	p.wantMsl = false
 }
 
-func (a *Arena) othersOf(self *Player) []*Ship {
-	var out []*Ship
+func (a *Arena) othersOf(self *Player) []*Player {
+	var out []*Player
 	for _, id := range a.order {
 		if id == self.ID {
 			continue
 		}
-		out = append(out, a.players[id].Ship)
+		out = append(out, a.players[id])
 	}
 	return out
 }

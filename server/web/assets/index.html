@@ -144,10 +144,12 @@
     padding-bottom: 3px; margin-bottom: 4px;
   }
   #board .brow { display: flex; justify-content: space-between; gap: 28px; line-height: 1.65; white-space: nowrap; }
-  #board .brow.me { color: #fff; }
-  #board .brow.me span:last-child { color: var(--amber); }
+  #board .brow.me span:first-child { color: #fff; }
+  #board .brow.me .frag { color: var(--amber); }
   #board .brow.out { opacity: 0.4; }
   #board .brow span:last-child { font-variant-numeric: tabular-nums; }
+  #board .hp.warn { color: #ffb020; }
+  #board .hp.crit { color: var(--amber); }
 
   /* centre message */
   #msg {

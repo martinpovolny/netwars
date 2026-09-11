@@ -6,8 +6,9 @@ func pv(v Vec3) proto.Vec3 { return proto.Vec3{v.X, v.Y, v.Z} }
 func pq(q Quat) proto.Quat { return proto.Quat{q.X, q.Y, q.Z, q.W} }
 
 // BuildSnapshot serialises the shared world for one player. `self` is that
-// player's ship (reconcile target); `others` are the rest (interpolate).
-func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Ship) proto.Snapshot {
+// player's ship (reconcile target); `others` are the rest (interpolate; the
+// player, not just the ship, so the roster carries id/name/hull).
+func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Player) proto.Snapshot {
 	var goals map[string]int
 	for _, g := range w.Fleet.Goals {
 		if g.N > 0 {
@@ -32,8 +33,9 @@ func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Ship) proto
 	}
 	for _, o := range others {
 		s.Others = append(s.Others, proto.ShipS{
-			Pos: pv(o.Pos), Vel: pv(o.Vel), Quat: pq(o.Quat),
-			Hull: o.Hull, Missiles: o.Missiles, Alive: o.Alive,
+			ID: o.ID, Name: o.Name,
+			Pos: pv(o.Ship.Pos), Vel: pv(o.Ship.Vel), Quat: pq(o.Ship.Quat),
+			Hull: o.Ship.Hull, MaxHull: o.Ship.MaxHull, Missiles: o.Ship.Missiles, Alive: o.Ship.Alive,
 		})
 	}
 	for _, e := range w.Fleet.List {

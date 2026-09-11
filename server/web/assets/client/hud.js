@@ -93,19 +93,19 @@ export class HUD {
       }
     }
 
+    const escName = (s) => String(s).slice(0, 16).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+
     if (dm) {
       // deathmatch: the top HUD is a frag scoreboard, not level objectives
       this.obj.style.display = 'none';
       if (this.podsEl) this.podsEl.style.display = 'none';
       if (this.board) {
         this.board.style.display = 'block';
-        const esc = (s) => String(s).slice(0, 16).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
         this.board.innerHTML = '<div class="btitle">FRAGS</div>' + (lock.board || [])
-          .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${esc(r.n)}</span><span>${r.f | 0}</span></div>`)
+          .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${escName(r.n)}</span><span class="frag">${r.f | 0}</span></div>`)
           .join('');
       }
     } else {
-      if (this.board) this.board.style.display = 'none';
       this.obj.style.display = '';
       if (this.podsEl) this.podsEl.style.display = '';
       const parts = [`Level ${enemies.level}`];
@@ -113,6 +113,22 @@ export class HUD {
         if (enemies.goals[k] > 0) parts.push(`${ENEMY_TYPES[k].name}×${enemies.goals[k]}`);
       }
       this.obj.textContent = parts.join('   ');
+
+      // co-op: a standing roster — who's connected + their shield/hull %
+      const roster = lock && lock.online ? lock.roster : null;
+      if (this.board && roster && roster.length) {
+        this.board.style.display = 'block';
+        this.board.innerHTML = `<div class="btitle">PLAYERS ${roster.length}</div>` + roster
+          .map((r) => {
+            const pct = Math.max(0, Math.round(100 * (r.hull / (r.maxHull || 1))));
+            const cls = r.id === lock.selfId ? ' me' : '';
+            const hpCls = !r.a ? ' out' : pct < 28 ? ' crit' : pct < 55 ? ' warn' : '';
+            return `<div class="brow${cls}"><span>${escName(r.n)}</span><span class="hp${hpCls}">${r.a ? pct + '%' : 'OUT'}</span></div>`;
+          })
+          .join('');
+      } else if (this.board) {
+        this.board.style.display = 'none';
+      }
       if (this.podsEl) {
         this.podsEl.textContent = `Pods ${pods.alive}/${pods.total}`;
         this.podsEl.classList.toggle('crit', pods.alive <= 2);

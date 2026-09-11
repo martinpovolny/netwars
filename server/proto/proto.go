@@ -84,10 +84,12 @@ type Quat [4]float64
 
 type ShipS struct {
 	ID       string  `json:"id"`
+	Name     string  `json:"n,omitempty"`
 	Pos      Vec3    `json:"p"`
 	Vel      Vec3    `json:"v"`
 	Quat     Quat    `json:"q"`
 	Hull     float64 `json:"hull"`
+	MaxHull  float64 `json:"maxHull,omitempty"`
 	Missiles int     `json:"msl"`
 	Alive    bool    `json:"alive"`
 }

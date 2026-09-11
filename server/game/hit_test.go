@@ -159,6 +159,36 @@ func TestArenaDeathmatch(t *testing.T) {
 	}
 }
 
+// The twin cannon fires two bolts offset +-GunHardpoint.Side (18u) off the
+// nose centreline — they never converge back onto it. A dead-center-aimed
+// shot at another player therefore always passes the target at ~18u, so
+// playerHitRadius has to clear that or gunfire can never land in deathmatch
+// (it used to be 10 — this exercises the real fireWeapons() muzzle geometry,
+// not an idealised on-target bolt, to catch exactly that class of bug).
+func TestArenaDeathmatchGunHitsADeadCenterTarget(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-gun", "dm", "dm-gun")
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+	p1.Ship.Pos = Vec3{}
+	p1.Ship.Quat = Quat{0, 0, 0, 1} // faces -Z
+	p1.Ship.Invuln = 0
+	p2.Ship.Pos = Vec3{Z: -400} // dead ahead, stationary
+	p2.Ship.Invuln = 0
+	p2.Ship.Hull = p2.Ship.MaxHull
+
+	for i := 0; i < 150 && p2.Ship.Hull >= p2.Ship.MaxHull; i++ { // 2.5s, ~20 bolts
+		p1.wantGun = true
+		a.step()
+	}
+	if p2.Ship.Hull >= p2.Ship.MaxHull {
+		t.Fatalf("a sustained dead-center shot never landed (hull still %v)", p2.Ship.Hull)
+	}
+}
+
 // Deathmatch: ramming another player hurts both and, on a kill, frags for
 // the survivor.
 func TestArenaDeathmatchRam(t *testing.T) {
