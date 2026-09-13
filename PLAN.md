@@ -234,10 +234,15 @@ manual one-off; not part of build or CI.)
   star-catalogue rewrite. Options to bring atmosphere back: (a) re-add a few dim
   additive blobs; (b) a faint procedural dust band along the real galactic
   plane (l/b → sphere, noise-modulated).
-- **Constellation lines + labels** — for a dozen or so famous constellations,
-  draw the figure lines between their catalogue stars (HYG has `bf`/`bayer`
-  designations to match against a small hand-built line list) and float a name
-  label. Toggleable; off by default. Data as `client/render/constellations.json`.
+- **Constellation lines + labels** — *done* (`m2-world` branch): the official/
+  traditional stick figures for 12 well-known constellations, hand-built in
+  `client/render/constellations.json` (real RA/Dec/mag per star, index-pair
+  line lists), rendered on the star sphere in `environment.js` with a small
+  billboard name label per constellation. Toggleable (**L**), off by default
+  (`env.constellationDefaultOn`). A "children's-book" H.A. Rey-style
+  reinterpretation (lines redrawn to actually look like the figure, e.g. a
+  full bear for Ursa Major) was explored and rejected in favour of the plain
+  official chart.
 
 ---
 

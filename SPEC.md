@@ -276,6 +276,10 @@ drifting; freeing it (killing the Raider) clears `captor`.
      so it never becomes a hyperspace tunnel).
   3. **Reference grid** — the faint blue y=0 grid, its opacity fading to zero
      as speed climbs (present when hovering, gone in a dogfight).
+  4. **Constellations** (optional overlay, key **L**, off by default) — the
+     official/traditional stick-figure lines for 12 well-known constellations
+     (`client/render/constellations.json`), plus a small billboard name label
+     per constellation, riding on the same star sphere.
 - Explosions: expanding amber wireframe shell + point-spray sparks.
 - HUD is thin monospace, phosphor colors, subtle glow. CRT scanlines optional.
 

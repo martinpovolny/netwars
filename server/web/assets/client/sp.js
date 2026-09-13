@@ -66,6 +66,7 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (e.code === 'Enter') { toggleFullscreen(); return; }
   if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
+  if (e.code === 'KeyL') { hud.flash(environment.toggleConstellations() ? 'CONSTELLATIONS ON' : 'CONSTELLATIONS OFF', 1.2); return; }
   // dead: the fight goes on without you — any key (after a beat) relaunches
   if (!player.alive) {
     if (performance.now() - deadAt > 700) player.respawn();

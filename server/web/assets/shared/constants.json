@@ -147,6 +147,13 @@
     "gridColorMinor": "#0b2230",
     "gridSnap": 400,
     "gridOpacityMax": 0.22,
-    "gridFadeSpeed": 300
+    "gridFadeSpeed": 300,
+
+    "constellationDefaultOn": false,
+    "constellationColor": "#5fc2f0",
+    "constellationOpacity": 0.5,
+    "constellationLabelColor": "#8fd6f7",
+    "constellationLabelOpacity": 0.55,
+    "constellationLabelSize": 1100
   }
 }
