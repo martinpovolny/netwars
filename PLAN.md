@@ -223,6 +223,27 @@ manual one-off; not part of build or CI.)
 
 ## Backlog (unscheduled)
 
+- **Player/enemy ship confusion** — *done* (`m2-world` branch): players in
+  co-op/deathmatch were flying the exact same hull (`makeDart`) as 4 of the 5
+  AI classes, wearing colours close enough to 3 of the 5 AI accents to read
+  as the same ship at combat range. Fixed with a new hull reserved
+  exclusively for player-controlled ships — `makePlayerShip` in
+  `client/ships.js`, a twin-boom fighter (gap through the middle, two engine
+  glows, two fins) that's structurally different from both the dart's single
+  delta wedge and the sniper's single rod, so shape alone tells friend from
+  foe regardless of hull colour. Also separated Raider (`#f5b81a`→`#ff8c1a`,
+  orange) from Fighter (`#22d4cc`→`#16d9c4`, turquoise) — same dart hull,
+  now ~144° apart in hue instead of sitting close together.
+- **2-Team Deathmatch / 2-Team Capture the Flag** — listed as disabled
+  "(soon)" options in the start-screen match-type picker; no server-side team
+  assignment, spawn zones, or scoring exists yet. Ship visuals are decided
+  ahead of the build: team ships use the new player-only hull
+  (`makePlayerShip` in `client/ships.js`, see below), colored by team rather
+  than the per-player FFA palette — **Team A `#2f8fff`** (blue), **Team B
+  `#ff2f6e`** (rose-red), picked for maximum hue separation from each other
+  (~130° apart) and kept clear of the hostile-fire red (`#ff2a1a`-ish, ~22°
+  away) so a teammate's hull doesn't read as enemy tracer fire.
+
 - **Meteorites** — *in progress* (branch stacked after the star catalogue):
   solid tumbling rocks. `shared/sim/rocks.js` (seeded field, drift + tumble +
   wrap, collide vs player / enemies / projectiles) + `client/render/meteorites.js`;

@@ -22,7 +22,7 @@ import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
 import { ENEMY_TYPES } from './levels.js';
-import { makeDart } from './ships.js';
+import { makePlayerShip } from './ships.js';
 import K from '../shared/constants.js';
 
 const HELLO_TIMEOUT = 6000;
@@ -137,7 +137,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       const o = list[i];
       const fresh = !otherMeshes[i];
       if (fresh) {
-        const m = makeDart(color, 1);
+        const m = makePlayerShip(color, 1);
         m.position.set(o.p[0], o.p[1], o.p[2]);
         m.quaternion.set(o.q[0], o.q[1], o.q[2], o.q[3]);
         scene.add(m); otherMeshes[i] = m;
