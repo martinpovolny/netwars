@@ -67,6 +67,12 @@
     background: var(--amber); opacity: 0.85;
   }
   .gauge .lbl { position: absolute; left: 0; right: 0; top: -20px; text-align: center; color: var(--green); font-size: 13px; }
+  /* boost fuel: shorter (it's a few seconds, not a flight stat), green fill,
+     dims to the dead colour once spent — the same "nothing left" cue as an
+     unlit vel bar, so an empty gauge reads as empty, not just low. */
+  .boost-gauge { height: 80px; }
+  .boost-gauge .fill { background: var(--green); }
+  .boost-gauge.empty .fill { background: var(--dim); }
 
   /* centre heading indicator: a cross with the centre missing */
   #heading {
@@ -165,6 +171,26 @@
     box-shadow: 0 0 40px rgba(255, 43, 43, 0.22);
   }
   #dead .sub { display: block; margin-top: 10px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
+
+  /* single-player pause: a clickable button (outside #hud, which is
+     pointer-events:none) plus a centre banner styled like #dead. */
+  #pause-btn {
+    position: fixed; left: 16px; top: 14px; z-index: 50;
+    padding: 6px 14px; font: inherit; font-size: 12px; letter-spacing: 2px;
+    text-transform: uppercase; cursor: pointer;
+    background: rgba(0, 0, 0, 0.5); color: var(--green); border: 1px solid var(--green);
+  }
+  #pause-btn:hover { background: rgba(53, 224, 74, 0.15); }
+  #pause-btn.on { color: var(--amber); border-color: var(--amber); }
+  #paused {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    display: none; text-align: center; color: var(--amber); font-size: 30px;
+    letter-spacing: 6px; padding: 14px 40px;
+    background: rgba(4, 2, 10, 0.55); border: 1px solid var(--amber);
+    box-shadow: 0 0 40px rgba(255, 43, 43, 0.22);
+  }
+  #paused.show { display: block; }
+  #paused .sub { display: block; margin-top: 10px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
   #dead .key { display: block; margin-top: 4px; font-size: 14px; color: var(--green); letter-spacing: 1px; }
 
   /* inset labels (viewports themselves are drawn by WebGL) */
@@ -177,11 +203,137 @@
     max-width: 94vw; line-height: 1.7;
   }
   #help.hidden { display: none; }
+
+  /* start screen — "/" always shows this instead of jumping into a game */
+  #start {
+    position: fixed; inset: 0; z-index: 1000; background: #000; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "DejaVu Sans Mono", "Courier New", monospace;
+  }
+  #start.hidden { display: none; }
+  /* two full-bleed pieces of cover art, cross-fading slowly behind the panel;
+     bg-b is anchored to its bottom edge so the loud title lettering baked
+     into that piece lands above the viewport instead of over the form. */
+  .start-bg {
+    position: absolute; inset: -2vh -2vw; z-index: 0;
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+    filter: saturate(0.75) brightness(0.55) blur(1px);
+    opacity: 0; animation: startBgFade 22s ease-in-out infinite;
+  }
+  #start-bg-a { background-image: url('./client/images/start-bg-01.png'); animation-delay: -11s; }
+  #start-bg-b { background-image: url('./client/images/start-bg-02.png'); background-position: center 130%; }
+  @keyframes startBgFade { 0%, 45% { opacity: 0.4; } 50%, 95% { opacity: 0; } 100% { opacity: 0.4; } }
+  #start::after {
+    content: ''; position: absolute; inset: 0; z-index: 1;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.82) 72%);
+  }
+  #start-panel {
+    position: relative; z-index: 2;
+    width: min(92vw, 460px); padding: 28px 32px 24px;
+    background: rgba(10, 4, 4, 0.6); border: 1px solid var(--green);
+    box-shadow: 0 0 50px rgba(53, 224, 74, 0.12);
+  }
+  #start h1 {
+    margin: 0 0 6px; font-size: 30px; letter-spacing: 6px; text-align: center;
+    color: var(--amber); text-shadow: 0 0 18px rgba(255, 43, 43, 0.5);
+  }
+  #start .tag {
+    margin: 0 0 22px; font-size: 12px; line-height: 1.6; color: #ff8;
+    text-align: center; opacity: 0.85;
+  }
+  #start .row { display: flex; gap: 22px; justify-content: center; margin-bottom: 18px; }
+  #start .row label { color: var(--green); font-size: 13px; letter-spacing: 1px; cursor: pointer; }
+  #start .row input[type="radio"] { accent-color: var(--green); margin-right: 6px; }
+  #start fieldset { border: 1px solid rgba(53, 224, 74, 0.35); margin: 0 0 20px; padding: 4px 16px 16px; }
+  #start fieldset.hidden { display: none; }
+  #start legend { color: var(--green); font-size: 11px; letter-spacing: 2px; padding: 0 6px; }
+  #start label.field { display: block; font-size: 11px; color: var(--green); letter-spacing: 1px; margin: 10px 0 4px; }
+  #start input[type="text"], #start select {
+    width: 100%; box-sizing: border-box; padding: 7px 9px; font: inherit; font-size: 13px;
+    background: #000; color: var(--amber); border: 1px solid var(--dim);
+  }
+  #start input[type="text"]:focus, #start select:focus { outline: none; border-color: var(--amber); }
+  #start select option:disabled { color: #555; }
+  #start .hint { font-size: 10px; color: #ff8; opacity: 0.6; margin: 6px 0 0; }
+  #start button#f-launch {
+    display: block; width: 100%; margin-top: 22px; padding: 12px; font: inherit;
+    font-size: 15px; letter-spacing: 4px; font-weight: bold; cursor: pointer;
+    background: var(--amber); color: #000; border: none;
+  }
+  #start button#f-launch:hover { background: #ff5a5a; }
+
+  /* fatal-error overlay — shown instead of the game when WebGL isn't
+     available; sits above #start so it always wins. */
+  #fatal-error {
+    position: fixed; inset: 0; z-index: 2000; background: #000;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "DejaVu Sans Mono", "Courier New", monospace;
+  }
+  #fatal-error.hidden { display: none; }
+  #fatal-error-panel {
+    width: min(92vw, 460px); padding: 28px 32px 24px; text-align: center;
+    background: rgba(10, 4, 4, 0.6); border: 1px solid var(--amber);
+    box-shadow: 0 0 50px rgba(255, 43, 43, 0.2);
+  }
+  #fatal-error h1 {
+    margin: 0 0 14px; font-size: 20px; letter-spacing: 3px;
+    color: var(--amber); text-shadow: 0 0 18px rgba(255, 43, 43, 0.5);
+  }
+  #fatal-error p {
+    margin: 0 0 10px; font-size: 13px; line-height: 1.6; color: #ff8;
+  }
+  #fatal-error p.detail { font-size: 11px; opacity: 0.75; }
 </style>
 </head>
 <body>
 <canvas id="view"></canvas>
 <div id="hit-flash"></div>
+
+<div id="start">
+  <div class="start-bg" id="start-bg-a"></div>
+  <div class="start-bg" id="start-bg-b"></div>
+  <div id="start-panel">
+    <h1>NETWARS</h1>
+    <p class="tag">First-person polygon space combat — mouse to aim, thrust and roll like a real ship, dull cannon and homing missiles, pods to defend. Fly solo against AI waves, or online with others.</p>
+
+    <div class="row">
+      <label><input type="radio" name="gtype" value="sp" checked> Single Player</label>
+      <label><input type="radio" name="gtype" value="mp"> Multiplayer</label>
+    </div>
+
+    <fieldset id="mp-fields" class="hidden">
+      <legend>MULTIPLAYER</legend>
+
+      <label class="field" for="f-session">Session name</label>
+      <input type="text" id="f-session" maxlength="24" placeholder="e.g. friday-night" autocomplete="off">
+
+      <label class="field" for="f-name">Callsign</label>
+      <input type="text" id="f-name" maxlength="16" placeholder="Pilot" autocomplete="off">
+
+      <label class="field" for="f-mode">Match type</label>
+      <select id="f-mode">
+        <option value="coop">Co-op — vs AI waves, shared pod defence</option>
+        <option value="dm">Deathmatch — free-for-all</option>
+        <option value="tdm" disabled>2-Team Deathmatch (soon)</option>
+        <option value="ctf" disabled>2-Team Capture the Flag (soon)</option>
+      </select>
+      <p class="hint">Anyone using the same session name joins the same match.</p>
+    </fieldset>
+
+    <button id="f-launch" type="button">LAUNCH</button>
+  </div>
+</div>
+
+<div id="fatal-error" class="hidden">
+  <div id="fatal-error-panel">
+    <h1>⚠ NO WEBGL</h1>
+    <p>NETWARS needs a browser with WebGL to render its 3D view, and this one couldn't give it one.</p>
+    <p>Try a recent Chrome, Firefox, Safari, or Edge, and make sure hardware acceleration is turned on.</p>
+    <p class="detail"></p>
+  </div>
+</div>
+
+<button id="pause-btn" type="button">&#10074;&#10074; Pause</button>
 
 <div id="hud">
   <div id="hpbar"><div class="fill" id="hpbar-fill"></div></div>
@@ -193,6 +345,7 @@
 
   <div id="gauges">
     <div class="gauge"><div class="fill" id="vel-fill"></div><span class="lbl">V</span></div>
+    <div class="gauge boost-gauge" id="boost-gauge"><div class="fill" id="boost-fill"></div><span class="lbl">B</span></div>
   </div>
 
   <!-- missile seeker / lock ring at screen centre -->
@@ -231,11 +384,14 @@
     <span class="sub" id="dead-sub"></span>
     <span class="key">watching the battle · press any key to relaunch</span>
   </div>
+  <div id="paused">Paused
+    <span class="sub">press P or click Pause to resume</span>
+  </div>
 
   <div id="axis-label">Orientation</div>
   <div id="radar-label">Scanner</div>
 
-  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space cannon &nbsp;·&nbsp; F / RMB missile &nbsp;·&nbsp; [ / ] scan zoom &nbsp;·&nbsp; Enter fullscreen &nbsp;·&nbsp; M music &nbsp;·&nbsp; H help</div>
+  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space cannon &nbsp;·&nbsp; F / RMB missile &nbsp;·&nbsp; [ / ] scan zoom &nbsp;·&nbsp; Enter fullscreen &nbsp;·&nbsp; M music &nbsp;·&nbsp; L constellations &nbsp;·&nbsp; P pause &nbsp;·&nbsp; H help</div>
 </div>
 
 <script type="importmap">

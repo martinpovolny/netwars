@@ -5,6 +5,8 @@ export class HUD {
     this.score = document.getElementById('score');
     this.missiles = document.getElementById('missiles');
     this.vel = document.getElementById('vel-fill');
+    this.boostGauge = document.getElementById('boost-gauge');
+    this.boostFill = document.getElementById('boost-fill');
     this.msg = document.getElementById('msg');
     this.dead = document.getElementById('dead');
     this.deadSub = document.getElementById('dead-sub');
@@ -25,6 +27,18 @@ export class HUD {
     this.msl = document.getElementById('msl');
     this._flash = 0;
     this._helpT = 0;
+    this._boardSig = null; // last-written #board HTML — skip the reflow-heavy
+                            // innerHTML rebuild on the ~59 frames/sec it hasn't changed
+  }
+
+  // Full innerHTML replacement reflows the whole panel — worth skipping when
+  // this frame's content is identical to what's already on screen (the board
+  // only actually changes a few times a second: a snapshot's hp%/frags, or
+  // the roster size).
+  _setBoard(html) {
+    if (html === this._boardSig) return;
+    this._boardSig = html;
+    this.board.innerHTML = html;
   }
 
   hideHelp() { this.help.classList.add('hidden'); this._helpT = 0; }
@@ -53,6 +67,11 @@ export class HUD {
     this.score.textContent = String(score).padStart(6, '0');
     this.missiles.textContent = player.missiles;
     this.vel.style.height = Math.min(100, 100 * player.speed() / player.maxSpeed) + '%';
+    if (this.boostFill) {
+      const frac = Math.max(0, Math.min(1, player.boostFuel / player.boostFuelMax));
+      this.boostFill.style.height = (100 * frac) + '%';
+      this.boostGauge.classList.toggle('empty', frac <= 0.001);
+    }
 
     // hull: a top bar that only shows when damaged (+ the hit vignette)
     const hp = player.hull / player.maxHull;
@@ -101,9 +120,9 @@ export class HUD {
       if (this.podsEl) this.podsEl.style.display = 'none';
       if (this.board) {
         this.board.style.display = 'block';
-        this.board.innerHTML = '<div class="btitle">FRAGS</div>' + (lock.board || [])
+        this._setBoard('<div class="btitle">FRAGS</div>' + (lock.board || [])
           .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${escName(r.n)}</span><span class="frag">${r.f | 0}</span></div>`)
-          .join('');
+          .join(''));
       }
     } else {
       this.obj.style.display = '';
@@ -118,14 +137,14 @@ export class HUD {
       const roster = lock && lock.online ? lock.roster : null;
       if (this.board && roster && roster.length) {
         this.board.style.display = 'block';
-        this.board.innerHTML = `<div class="btitle">PLAYERS ${roster.length}</div>` + roster
+        this._setBoard(`<div class="btitle">PLAYERS ${roster.length}</div>` + roster
           .map((r) => {
             const pct = Math.max(0, Math.round(100 * (r.hull / (r.maxHull || 1))));
             const cls = r.id === lock.selfId ? ' me' : '';
             const hpCls = !r.a ? ' out' : pct < 28 ? ' crit' : pct < 55 ? ' warn' : '';
             return `<div class="brow${cls}"><span>${escName(r.n)}</span><span class="hp${hpCls}">${r.a ? pct + '%' : 'OUT'}</span></div>`;
           })
-          .join('');
+          .join(''));
       } else if (this.board) {
         this.board.style.display = 'none';
       }

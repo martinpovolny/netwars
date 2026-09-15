@@ -91,6 +91,75 @@ export function makeDart(accent = 0xff4040, bulk = 1) {
   return g;
 }
 
+// player hull — reserved exclusively for player-controlled ships (never an
+// AI class): a twin-boom fighter. Every AI type is a single hull silhouette
+// (the dart's one wide delta wedge, or the sniper's one straight rod), so a
+// twin-boom shape — a gap straight through the middle, two separate engine
+// glows, two fins — reads as structurally different at a glance, in
+// silhouette, and regardless of hull colour or the viewer's colour vision.
+export function makePlayerShip(accent = 0x35e0d0, bulk = 1) {
+  const g = new THREE.Group();
+  const sc = bulk * SHIP_SCALE;
+  const hullMat = new THREE.MeshStandardMaterial({ color: mix(0xc6cdd6, accent, 0.4), flatShading: true, roughness: 0.6, side: THREE.DoubleSide });
+  const trim = new THREE.MeshStandardMaterial({ color: accent, flatShading: true, roughness: 0.35, emissive: mix(0x000000, accent, 0.25) });
+  const addEdges = (mesh, geo, threshold = 18) => {
+    const lines = new THREE.LineSegments(new THREE.EdgesGeometry(geo, threshold), new THREE.LineBasicMaterial({ color: bright(accent, 0.55) }));
+    lines.position.copy(mesh.position);
+    lines.rotation.copy(mesh.rotation);
+    g.add(lines);
+  };
+
+  // central spine: short faceted nose + a slim body, canopy on top
+  const noseGeo = new THREE.ConeGeometry(2.6 * sc, 11 * sc, 4);
+  const nose = new THREE.Mesh(noseGeo, hullMat);
+  nose.rotation.x = -Math.PI / 2;
+  nose.rotation.y = Math.PI / 4;
+  nose.position.z = -9 * sc;
+  g.add(nose); addEdges(nose, noseGeo, 20);
+
+  const spineGeo = new THREE.BoxGeometry(3.2 * sc, 2.6 * sc, 15 * sc);
+  const spine = new THREE.Mesh(spineGeo, hullMat);
+  spine.position.z = 2 * sc;
+  g.add(spine); addEdges(spine, spineGeo);
+
+  const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.7 * sc, 6 * sc, 4), trim);
+  canopy.rotation.x = -Math.PI / 2;
+  canopy.rotation.y = Math.PI / 4;
+  canopy.position.set(0, 1.9 * sc, -5 * sc);
+  canopy.scale.set(1, 0.55, 1.5);
+  g.add(canopy);
+
+  // wing spar: one flat span connecting the two booms — the "H" cross-brace
+  const sparGeo = new THREE.BoxGeometry(30 * sc, 1.1 * sc, 6 * sc);
+  const spar = new THREE.Mesh(sparGeo, hullMat);
+  spar.position.z = 4 * sc;
+  g.add(spar); addEdges(spar, sparGeo);
+
+  // twin booms + engine glows + fins — mirrored left/right
+  const boomGeo = new THREE.CylinderGeometry(2.0 * sc, 2.5 * sc, 20 * sc, 6);
+  const finGeo = new THREE.BoxGeometry(0.5 * sc, 6 * sc, 6 * sc);
+  for (const sx of [-1, 1]) {
+    const boom = new THREE.Mesh(boomGeo, hullMat);
+    boom.rotation.x = -Math.PI / 2;
+    boom.position.set(sx * 12 * sc, -0.3 * sc, 8 * sc);
+    g.add(boom); addEdges(boom, boomGeo, 20);
+
+    const glow = new THREE.Mesh(
+      new THREE.CircleGeometry(2.1 * sc, 10),
+      new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+    );
+    glow.position.set(sx * 12 * sc, -0.3 * sc, 18.2 * sc);
+    g.add(glow);
+
+    const fin = new THREE.Mesh(finGeo, trim);
+    fin.position.set(sx * 12 * sc, 3.3 * sc, 13 * sc);
+    fin.rotation.z = sx * 0.18;
+    g.add(fin);
+  }
+
+  return g;
+}
+
 // distant-fire sniper — a long needle with a prominent forward gun barrel and
 // a rear fin cluster. Deliberately a very different silhouette from the dart.
 export function makeSniper(accent = 0x3a6bff, bulk = 1.2) {

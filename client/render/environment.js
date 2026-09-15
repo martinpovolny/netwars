@@ -1,9 +1,20 @@
 import * as THREE from 'three';
 import { K } from '../../shared/constants.js';
 import STARS from './stars.json' with { type: 'json' };
+import CONSTELLATIONS from './constellations.json' with { type: 'json' };
 
 const E = K.env;
 const hex = (s) => parseInt(s.slice(1), 16);
+
+// RA (hours) / Dec (degrees) -> a point on the sky sphere of radius R. Same
+// convention the star catalogue uses, so constellation lines land exactly on
+// their stars.
+function radecToVec(raHours, decDeg, R) {
+  const ra = raHours * Math.PI / 12;
+  const dec = decDeg * Math.PI / 180;
+  const cd = Math.cos(dec);
+  return [cd * Math.cos(ra) * R, Math.sin(dec) * R, cd * Math.sin(ra) * R];
+}
 
 // B-V colour index -> approximate RGB. A few stops, lerped; enough to tell a
 // hot blue star from a cool orange one without a full black-body fit.
@@ -27,6 +38,32 @@ function bvColor(bv, out) {
   out[1] = a[1][1] + (b[1][1] - a[1][1]) * t;
   out[2] = a[1][2] + (b[1][2] - a[1][2]) * t;
   return out;
+}
+
+// A constellation name as a camera-facing billboard, rendered once to a
+// canvas texture (cheap: 12 of these total, built once at load).
+function makeLabelSprite(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  ctx.font = '400 48px "DejaVu Sans Mono", "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = E.constellationLabelColor;
+  ctx.shadowColor = E.constellationLabelColor;
+  ctx.shadowBlur = 6;
+  ctx.fillText(text.toUpperCase(), canvas.width / 2, canvas.height / 2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, transparent: true, opacity: E.constellationLabelOpacity,
+    depthWrite: false, fog: false,
+  }));
+  const h = E.constellationLabelSize;
+  sprite.scale.set(h * (canvas.width / canvas.height), h, 1);
+  return sprite;
 }
 
 function scatterShell(count, radius) {
@@ -55,6 +92,10 @@ function scatterShell(count, radius) {
 //     hyperspace tunnel; invisible at rest).
 //  3. reference grid — the y=0 plane, its opacity fading to nothing as you
 //     pick up speed.
+//
+// A 4th, optional overlay rides on the star sphere: the official/traditional
+// stick-figure lines for a dozen well-known constellations, off by default
+// (see setConstellations/toggleConstellations).
 export class Environment {
   constructor(scene) {
     // ---- layer 1: real star catalogue -----------------------------
@@ -62,6 +103,7 @@ export class Environment {
     this.sky.renderOrder = -10;
     scene.add(this.sky);
     this._buildStars();
+    this._buildConstellations();
 
     // ---- layer 2: near-field motes (drawn as velocity streaks) -------
     this._base = scatterShell(E.moteCount, E.moteField * 0.5);
@@ -109,12 +151,7 @@ export class Environment {
     const buckets = sizes.map(() => ({ pos: [], col: [] }));
     const rgb = [0, 0, 0];
     for (let i = 0; i < n; i++) {
-      const ra = STARS.ra[i] * Math.PI / 12;      // hours -> rad
-      const dec = STARS.dec[i] * Math.PI / 180;   // deg   -> rad
-      const cd = Math.cos(dec);
-      const x = cd * Math.cos(ra) * R;
-      const y = Math.sin(dec) * R;
-      const z = cd * Math.sin(ra) * R;
+      const [x, y, z] = radecToVec(STARS.ra[i], STARS.dec[i], R);
 
       const mag = STARS.mag[i];
       let bi = buckets.length - 1;
@@ -141,6 +178,51 @@ export class Environment {
       this.sky.add(pts);
       return pts;
     });
+  }
+
+  // The official/traditional stick-figure charts (a dozen well-known
+  // constellations, see client/render/constellations.json) — one shared
+  // line buffer plus a small billboard label per constellation. Off by
+  // default; toggled at runtime via setConstellations()/toggleConstellations().
+  _buildConstellations() {
+    const R = E.starRadius;
+    const pos = [];
+    for (const c of CONSTELLATIONS.constellations) {
+      const vecs = c.stars.map(([ra, dec]) => radecToVec(ra, dec, R));
+      for (const [i, j] of c.lines) pos.push(...vecs[i], ...vecs[j]);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+      color: hex(E.constellationColor), transparent: true,
+      opacity: E.constellationOpacity, depthWrite: false, fog: false,
+    }));
+    lines.frustumCulled = false;
+
+    const labels = new THREE.Group();
+    for (const c of CONSTELLATIONS.constellations) {
+      const raC = c.stars.reduce((s, st) => s + st[0], 0) / c.stars.length;
+      const decC = c.stars.reduce((s, st) => s + st[1], 0) / c.stars.length;
+      const sprite = makeLabelSprite(c.name);
+      sprite.position.set(...radecToVec(raC, decC, R));
+      labels.add(sprite);
+    }
+
+    this.constellations = new THREE.Group();
+    this.constellations.add(lines, labels);
+    this.constellations.visible = E.constellationDefaultOn;
+    this.sky.add(this.constellations);
+    this.showConstellations = E.constellationDefaultOn;
+  }
+
+  setConstellations(on) {
+    this.showConstellations = on;
+    this.constellations.visible = on;
+    return on;
+  }
+
+  toggleConstellations() {
+    return this.setConstellations(!this.showConstellations);
   }
 
   // camera: the viewpoint (drives stars + mote wrap). player: supplies the

@@ -27,11 +27,26 @@ func StepShip(ship *Ship, c Control, dt float64, kp PlayerBlock) {
 	ship.Quat.Multiply(dq)
 	ship.Quat.Normalize()
 
+	// boost fuel: a few seconds of continuous boost, then it's spent and
+	// recharges over a couple more. Recharge is gated on the raw held-key
+	// state (c.Boost), not on `boosting` below — otherwise the instant fuel
+	// hits 0 while the key is still down, boosting would flip false, fall
+	// into the recharge branch, refill a hair, flip true again next tick,
+	// and drain again: a one-tick stutter that's effectively free boost
+	// forever right at empty. Held past empty is pinned at 0 until you let
+	// go (twin of shared/sim/flight.js#stepShip).
+	boosting := c.Boost && ship.BoostFuel > 0
+	if c.Boost {
+		ship.BoostFuel = math.Max(0, ship.BoostFuel-dt)
+	} else {
+		ship.BoostFuel = math.Min(kp.BoostFuelMax, ship.BoostFuel+kp.BoostRechargeRate*dt)
+	}
+
 	// thrust / reverse: impulse along the nose; momentum persists
 	f := fwd
 	f.ApplyQuaternion(ship.Quat)
 	boost := 1.0
-	if c.Boost {
+	if boosting {
 		boost = kp.BoostMult
 	}
 	if c.Thrust != 0 {
@@ -49,10 +64,16 @@ func StepShip(ship *Ship, c Control, dt float64, kp PlayerBlock) {
 		ship.Vel.MultiplyScalar(math.Max(0, 1-4*dt))
 	}
 
-	// ambient drag + speed cap + integrate
+	// ambient drag + speed cap + integrate — the cap itself lifts while
+	// boosting (twin of shared/sim/flight.js#stepShip; see the comment
+	// there for why releasing boost reverts it immediately)
 	ship.Vel.MultiplyScalar(math.Max(0, 1-kp.Drag*dt))
-	if ship.Vel.Length() > kp.MaxSpeed {
-		ship.Vel.SetLength(kp.MaxSpeed)
+	cap := kp.MaxSpeed
+	if boosting {
+		cap = kp.BoostMaxSpeed
+	}
+	if ship.Vel.Length() > cap {
+		ship.Vel.SetLength(cap)
 	}
 	ship.Pos.AddScaledVector(ship.Vel, dt)
 }

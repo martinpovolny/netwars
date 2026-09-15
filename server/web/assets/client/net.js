@@ -22,7 +22,8 @@ import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
 import { ENEMY_TYPES } from './levels.js';
-import { makeDart } from './ships.js';
+import { makePlayerShip } from './ships.js';
+import { showFatalError } from './webgl.js';
 import K from '../shared/constants.js';
 
 const HELLO_TIMEOUT = 6000;
@@ -78,7 +79,16 @@ function runOnline({ ws, welcome }, { mode, name }) {
   const myName = name || welcome.playerId;
   // ---- render shell (mirrors client/sp.js) --------------------------
   const canvas = document.getElementById('view');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  } catch (err) {
+    // main.js already checks hasWebGL() before importing this module, but a
+    // browser can pass that probe and still fail to hand out a real context
+    // (driver blocklist, "too many active WebGL contexts", ...).
+    showFatalError(String(err && err.message || err));
+    throw err;
+  }
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.autoClear = false;
 
@@ -137,7 +147,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       const o = list[i];
       const fresh = !otherMeshes[i];
       if (fresh) {
-        const m = makeDart(color, 1);
+        const m = makePlayerShip(color, 1);
         m.position.set(o.p[0], o.p[1], o.p[2]);
         m.quaternion.set(o.q[0], o.q[1], o.q[2], o.q[3]);
         scene.add(m); otherMeshes[i] = m;
@@ -194,6 +204,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     if (e.repeat) return;
     if (e.code === 'Enter') { toggleFullscreen(); return; }
     if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
+    if (e.code === 'KeyL') { hud.flash(environment.toggleConstellations() ? 'CONSTELLATIONS ON' : 'CONSTELLATIONS OFF', 1.2); return; }
     if (e.code === 'KeyH') hud.showHelp(4);
     if (e.code === 'BracketRight' || e.code === 'Equal') { radar.zoom(1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
     if (e.code === 'BracketLeft' || e.code === 'Minus') { radar.zoom(-1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
@@ -313,7 +324,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
 
   // ---- snapshot -> world ------------------------------------
   // reconcile scratch: authoritative ship state + replay of unacked inputs.
-  const _recon = { position: new THREE.Vector3(), velocity: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+  const _recon = { position: new THREE.Vector3(), velocity: new THREE.Vector3(), quaternion: new THREE.Quaternion(), boostFuel: 0, boosting: false };
   // camErr holds the still-visible part of a correction; the frame loop eases
   // it to zero so the *view* doesn't pop at the snapshot rate. Kept small — it
   // offsets the camera from where the server spawns our bolts.
@@ -334,6 +345,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       player.position.set(sh.p[0], sh.p[1], sh.p[2]);
       player.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
       player.quaternion.set(sh.q[0], sh.q[1], sh.q[2], sh.q[3]);
+      player.boostFuel = sh.bf;
     } else {
       // Prediction reconcile: drop inputs the server has acked, anchor on the
       // authoritative ship, then re-apply every input still in flight through
@@ -346,6 +358,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       _recon.position.set(sh.p[0], sh.p[1], sh.p[2]);
       _recon.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
       _recon.quaternion.set(sh.q[0], sh.q[1], sh.q[2], sh.q[3]);
+      _recon.boostFuel = sh.bf;
       for (const e of inputLog) stepShip(_recon, e.ctrl, e.dt, K.player);
 
       const err = player.position.distanceTo(_recon.position);
@@ -362,6 +375,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
       player.position.copy(_recon.position);
       player.velocity.copy(_recon.velocity);
       player.quaternion.copy(_recon.quaternion);
+      player.boostFuel = _recon.boostFuel;
+      player.boosting = _recon.boosting;
     }
 
     syncOthers(s.others || []);
@@ -485,7 +500,13 @@ function runOnline({ ws, welcome }, { mode, name }) {
     bonuses.update(dt);
     weapons.update(dt);
     explosions.update(dt);
-    radar.update(player, enemies, pods, bonuses, world.others);
+    const radarMissiles = [];
+    for (let mi = 0; mi < pr.max; mi++) {
+      if (pr.ttl[mi] > 0 && pr.kind[mi] === 'missile') {
+        radarMissiles.push({ position: pr.pos[mi], mine: pr.own[mi] === pr.selfId });
+      }
+    }
+    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles);
     orient.update(player);
 
     if (wasAlive && !player.alive) {

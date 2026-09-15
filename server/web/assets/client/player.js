@@ -18,6 +18,8 @@ export class Player {
     this.velocity = new THREE.Vector3();
 
     this.boosting = false;
+    this.boostFuel = K.player.boostFuelMax;  // seconds of boost left; stepShip drains/recharges it
+    this.boostFuelMax = K.player.boostFuelMax;  // kept for the HUD gauge readout
     this.thrusting = 0;        // -1 reverse, 0, +1 forward (for the HUD)
     this.hull = 100;
     this.maxHull = 100;
@@ -156,6 +158,7 @@ export class Player {
     this.thrusting = 0;
     this.hull = this.maxHull;
     this.missiles = this.maxMissiles;
+    this.boostFuel = this.boostFuelMax;
     this.mouse.set(0, 0);
     this.intent.set(0, 0);
     this.invuln = 1.5;
@@ -169,6 +172,7 @@ export class Player {
     this.thrusting = 0;
     this.hull = this.maxHull;
     this.missiles = this.maxMissiles;
+    this.boostFuel = this.boostFuelMax;
     this.mouse.set(0, 0);
     this.intent.set(0, 0);
     this.invuln = 2.0;

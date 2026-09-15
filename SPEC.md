@@ -262,7 +262,12 @@ drifting; freeing it (killing the Raider) clears `captor`.
 ## 12. Visual style
 
 - **Flat-shaded low-poly** ships + **bright vector edge lines** (EdgesGeometry).
-  Hull grey/white, per-player/-class accent stripe and canopy.
+  Hull grey/white, per-class accent stripe and canopy. Three hull families,
+  never shared across the friend/foe line: the **dart** (delta wedge, most AI
+  classes), the **sniper** (a single rod — Guardian only), and the
+  **twin-boom** (`makePlayerShip`, gap through the middle, two engine glows —
+  reserved for player-controlled ships, so shape alone reads friend vs. foe
+  regardless of hull colour).
 - Black space (`#02040a`), exponential fog, and a **3-layer environment**
   (`client/render/environment.js`, tuned from `constants.json` `env`):
   1. **Fixed star sphere** — the real HYG catalogue reduced to the naked-eye
@@ -276,6 +281,10 @@ drifting; freeing it (killing the Raider) clears `captor`.
      so it never becomes a hyperspace tunnel).
   3. **Reference grid** — the faint blue y=0 grid, its opacity fading to zero
      as speed climbs (present when hovering, gone in a dogfight).
+  4. **Constellations** (optional overlay, key **L**, off by default) — the
+     official/traditional stick-figure lines for 12 well-known constellations
+     (`client/render/constellations.json`), plus a small billboard name label
+     per constellation, riding on the same star sphere.
 - Explosions: expanding amber wireframe shell + point-spray sparks.
 - HUD is thin monospace, phosphor colors, subtle glow. CRT scanlines optional.
 

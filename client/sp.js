@@ -14,9 +14,19 @@ import { HUD } from './hud.js';
 import { PODS_PER_LEVEL, ENEMY_TYPES, goalsForLevel } from './levels.js';
 import K from '../shared/constants.js';
 import { makeWorld, startWorldLevel, stepWorld } from '../shared/sim/world.js';
+import { showFatalError } from './webgl.js';
 
 const canvas = document.getElementById('view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+} catch (err) {
+  // main.js already checks hasWebGL() before importing this module, but a
+  // browser can pass that probe and still fail to hand out a real context
+  // (driver blocklist, "too many active WebGL contexts", ...).
+  showFatalError(String(err && err.message || err));
+  throw err;
+}
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 renderer.autoClear = false;
 
@@ -62,10 +72,27 @@ window.__nw = { scene, camera, player, world, enemies, pods, bonuses, weapons, e
 
 canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
 
+// pause: freezes the whole sim (SP only — a network game can't pause other
+// people's clocks). window.__nw.paused already gated the world tick before
+// this; the frame loop below also skips player.update() entirely while
+// paused, not just with dt=0, so a cooldown-ready shot can't sneak out and
+// mouse motion doesn't snap the ship the instant you resume.
+const pauseBtn = document.getElementById('pause-btn');
+const pausedBanner = document.getElementById('paused');
+function setPaused(v) {
+  window.__nw.paused = v;
+  pausedBanner.classList.toggle('show', v);
+  pauseBtn.classList.toggle('on', v);
+  pauseBtn.innerHTML = v ? '&#9654; Resume' : '&#10074;&#10074; Pause';
+}
+pauseBtn.addEventListener('click', () => setPaused(!window.__nw.paused));
+
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (e.code === 'Enter') { toggleFullscreen(); return; }
   if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
+  if (e.code === 'KeyL') { hud.flash(environment.toggleConstellations() ? 'CONSTELLATIONS ON' : 'CONSTELLATIONS OFF', 1.2); return; }
+  if (e.code === 'KeyP') { setPaused(!window.__nw.paused); return; }
   // dead: the fight goes on without you — any key (after a beat) relaunches
   if (!player.alive) {
     if (performance.now() - deadAt > 700) player.respawn();
@@ -77,8 +104,14 @@ window.addEventListener('keydown', (e) => {
 });
 
 function startLevel(n) {
-  startWorldLevel(world, n, PODS_PER_LEVEL);
+  // player.reset() MUST run first: startWorldLevel() spawns pods (and, via
+  // the fleet's pod-centroid anchor, enemies) around world.ship.position as
+  // it stands *right now* — reset() first so that's the fresh spawn point,
+  // not wherever the player happened to end the previous level. The Go
+  // server already gets this order right (arena.go sets Ship.Pos before
+  // calling StartWorldLevel); this only fixes SP, which had it backwards.
   player.reset();
+  startWorldLevel(world, n, PODS_PER_LEVEL);
   hud.flash('LEVEL ' + n, 2.2);
 }
 
@@ -165,11 +198,16 @@ function frame(now) {
 
   const wasAlive = player.alive;
   // the world keeps simulating even when the player is dead (spectating);
-  // only a manual debug pause freezes it
-  const simDt = window.__nw.paused ? 0 : dt;
+  // only a manual pause freezes it
+  const paused = window.__nw.paused;
+  const simDt = paused ? 0 : dt;
 
-  // client-predicted own ship
-  player.update(dt, input, weapons, enemies, audio);
+  // client-predicted own ship — fully skipped while paused (not just given
+  // dt=0), since a cooldown-ready shot fires as soon as it's asked for
+  // regardless of dt. Still drain the accumulated mouse motion so the ship
+  // doesn't snap the instant you resume.
+  if (paused) input.takeMouse();
+  else player.update(dt, input, weapons, enemies, audio);
 
   // one authoritative tick over enemies / pods / bonuses / projectiles /
   // collisions / level FSM (the same stepWorld the Go server runs)
@@ -185,7 +223,12 @@ function frame(now) {
   bonuses.update(simDt);
   weapons.update(simDt);
   explosions.update(simDt);
-  radar.update(player, enemies, pods, bonuses);
+  const pr = world.projectiles;
+  const radarMissiles = [];
+  for (let mi = 0; mi < pr.max; mi++) {
+    if (pr.ttl[mi] > 0 && pr.kind[mi] === 'missile') radarMissiles.push({ position: pr.pos[mi], mine: true });
+  }
+  radar.update(player, enemies, pods, bonuses, null, radarMissiles);
   orient.update(player);
 
   // player just died -> mark the moment, hold the spectator camera here
@@ -217,7 +260,7 @@ function frame(now) {
     }
     _lookM.lookAt(specPos, _lookAt, UP);
     _targetQ.setFromRotationMatrix(_lookM);
-    specQuat.slerp(_targetQ, 1 - Math.pow(0.05, dt));
+    specQuat.slerp(_targetQ, 1 - Math.pow(0.05, simDt));
     camera.position.copy(specPos);
     camera.quaternion.copy(specQuat);
   }

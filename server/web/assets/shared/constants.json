@@ -10,6 +10,9 @@
     "boostMult": 2.4,
     "drag": 0.02,
     "maxSpeed": 620,
+    "boostMaxSpeed": 1700,
+    "boostFuelMax": 3.0,
+    "boostRechargeRate": 1.2,
     "turnFactor": 1.9,
     "rollRate": 2.0,
     "mouseGain": 0.0042,
@@ -43,7 +46,8 @@
     "missileSelfPropel": 1.6,
     "missileMaxSpeed": 1500,
     "missileGuideDelay": 0.35,
-    "missileGuideRate": 0.01
+    "missileGuideRate": 0.01,
+    "missileInterceptRadius": 20
   },
 
   "enemy": {
@@ -72,8 +76,8 @@
 
   "types": {
     "pirate":    { "name": "Pirate",    "behavior": "brawler", "target": "pods",   "speedFactor": 500,  "turnFactor": 24, "shield": 2, "accent": "#2fe04a", "bulk": 0.9,  "score": 100, "fireRange": 900,  "fireGap": [1.4, 2.4] },
-    "raider":    { "name": "Raider",    "behavior": "thief",   "target": "pods",   "speedFactor": 620,  "turnFactor": 20, "shield": 2, "accent": "#f5b81a", "bulk": 1.05, "score": 120, "fireRange": 700,  "fireGap": [1.8, 3.0] },
-    "fighter":   { "name": "Fighter",   "behavior": "strafer", "target": "pods",   "speedFactor": 700,  "turnFactor": 24, "shield": 2, "accent": "#22d4cc", "bulk": 1.0,  "score": 150, "fireRange": 1100, "fireGap": [1.1, 1.9] },
+    "raider":    { "name": "Raider",    "behavior": "thief",   "target": "pods",   "speedFactor": 620,  "turnFactor": 20, "shield": 2, "accent": "#ff8c1a", "bulk": 1.05, "score": 120, "fireRange": 700,  "fireGap": [1.8, 3.0] },
+    "fighter":   { "name": "Fighter",   "behavior": "strafer", "target": "pods",   "speedFactor": 700,  "turnFactor": 24, "shield": 2, "accent": "#16d9c4", "bulk": 1.0,  "score": 150, "fireRange": 1100, "fireGap": [1.1, 1.9] },
     "guardian":  { "name": "Guardian",  "behavior": "sniper",  "target": "player", "shape": "sniper",   "speedFactor": 1100, "turnFactor": 32, "shield": 4, "accent": "#2f7bff", "bulk": 1.2, "score": 250, "fireRange": 1500, "fireGap": [0.45, 0.85] },
     "commander": { "name": "Commander", "behavior": "charger", "target": "player", "speedFactor": 900,  "turnFactor": 22, "shield": 8, "accent": "#6a5bff", "bulk": 1.6,  "score": 500, "fireRange": 1300, "fireGap": [0.38, 0.65] }
   },
@@ -147,6 +151,13 @@
     "gridColorMinor": "#0b2230",
     "gridSnap": 400,
     "gridOpacityMax": 0.22,
-    "gridFadeSpeed": 300
+    "gridFadeSpeed": 300,
+
+    "constellationDefaultOn": false,
+    "constellationColor": "#5fc2f0",
+    "constellationOpacity": 0.5,
+    "constellationLabelColor": "#8fd6f7",
+    "constellationLabelOpacity": 0.55,
+    "constellationLabelSize": 1100
   }
 }
