@@ -206,12 +206,29 @@
 
   /* start screen — "/" always shows this instead of jumping into a game */
   #start {
-    position: fixed; inset: 0; z-index: 1000; background: #000;
+    position: fixed; inset: 0; z-index: 1000; background: #000; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     font-family: "DejaVu Sans Mono", "Courier New", monospace;
   }
   #start.hidden { display: none; }
+  /* two full-bleed pieces of cover art, cross-fading slowly behind the panel;
+     bg-b is anchored to its bottom edge so the loud title lettering baked
+     into that piece lands above the viewport instead of over the form. */
+  .start-bg {
+    position: absolute; inset: -2vh -2vw; z-index: 0;
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+    filter: saturate(0.75) brightness(0.55) blur(1px);
+    opacity: 0; animation: startBgFade 22s ease-in-out infinite;
+  }
+  #start-bg-a { background-image: url('./client/images/start-bg-01.png'); animation-delay: -11s; }
+  #start-bg-b { background-image: url('./client/images/start-bg-02.png'); background-position: center 130%; }
+  @keyframes startBgFade { 0%, 45% { opacity: 0.4; } 50%, 95% { opacity: 0; } 100% { opacity: 0.4; } }
+  #start::after {
+    content: ''; position: absolute; inset: 0; z-index: 1;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.82) 72%);
+  }
   #start-panel {
+    position: relative; z-index: 2;
     width: min(92vw, 460px); padding: 28px 32px 24px;
     background: rgba(10, 4, 4, 0.6); border: 1px solid var(--green);
     box-shadow: 0 0 50px rgba(53, 224, 74, 0.12);
@@ -273,6 +290,8 @@
 <div id="hit-flash"></div>
 
 <div id="start">
+  <div class="start-bg" id="start-bg-a"></div>
+  <div class="start-bg" id="start-bg-b"></div>
   <div id="start-panel">
     <h1>NETWARS</h1>
     <p class="tag">First-person polygon space combat — mouse to aim, thrust and roll like a real ship, dull cannon and homing missiles, pods to defend. Fly solo against AI waves, or online with others.</p>
