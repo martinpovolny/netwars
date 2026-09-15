@@ -93,7 +93,8 @@ func newShip(k *Constants) *Ship {
 		Alive: true,
 		Hull:  k.Player.MaxHull, MaxHull: k.Player.MaxHull,
 		Missiles: int(k.Player.MaxMissiles), MaxMissiles: k.Player.MaxMissiles,
-		Quat: Quat{0, 0, 0, 1},
+		BoostFuel: k.Player.BoostFuelMax,
+		Quat:      Quat{0, 0, 0, 1},
 	}
 }
 
@@ -118,6 +119,7 @@ func resetShip(s *Ship, k *Constants) {
 	s.Quat = Quat{0, 0, 0, 1}
 	s.Hull = s.MaxHull
 	s.Missiles = int(s.MaxMissiles)
+	s.BoostFuel = k.Player.BoostFuelMax
 	s.HitPulse = 0
 	s.Invuln = k.Player.InvulnOnReset
 	s.Alive = true

@@ -11,6 +11,8 @@
     "drag": 0.02,
     "maxSpeed": 620,
     "boostMaxSpeed": 1700,
+    "boostFuelMax": 3.0,
+    "boostRechargeRate": 1.2,
     "turnFactor": 1.9,
     "rollRate": 2.0,
     "mouseGain": 0.0042,

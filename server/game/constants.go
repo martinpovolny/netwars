@@ -30,31 +30,33 @@ type Hardpoint struct {
 // PlayerBlock is K.player — flat scalars plus the two hardpoints. Extra keys in
 // the JSON are ignored; add fields here as stepWorld needs them.
 type PlayerBlock struct {
-	MaxHull          float64   `json:"maxHull"`
-	MaxMissiles      float64   `json:"maxMissiles"`
-	Radius           float64   `json:"radius"`
-	ThrustAccel      float64   `json:"thrustAccel"`
-	BrakeAccel       float64   `json:"brakeAccel"`
-	BoostMult        float64   `json:"boostMult"`
-	Drag             float64   `json:"drag"`
-	MaxSpeed         float64   `json:"maxSpeed"`
-	BoostMaxSpeed    float64   `json:"boostMaxSpeed"`
-	TurnFactor       float64   `json:"turnFactor"`
-	RollRate         float64   `json:"rollRate"`
-	MouseGain        float64   `json:"mouseGain"`
-	IntentLag        float64   `json:"intentLag"`
-	MouseRecenter    float64   `json:"mouseRecenter"`
-	HitPulseDecay    float64   `json:"hitPulseDecay"`
-	InvulnOnReset    float64   `json:"invulnOnReset"`
-	InvulnOnRespawn  float64   `json:"invulnOnRespawn"`
-	GunInterval      float64   `json:"gunInterval"`
-	MissileInterval  float64   `json:"missileInterval"`
-	CannonMuzzle     float64   `json:"cannonMuzzle"`
-	BoltTtl          float64   `json:"boltTtl"`
-	MissileMuzzle    float64   `json:"missileMuzzle"`
-	MissileLife      float64   `json:"missileLife"`
-	GunHardpoint     Hardpoint `json:"gunHardpoint"`
-	MissileHardpoint Hardpoint `json:"missileHardpoint"`
+	MaxHull           float64   `json:"maxHull"`
+	MaxMissiles       float64   `json:"maxMissiles"`
+	Radius            float64   `json:"radius"`
+	ThrustAccel       float64   `json:"thrustAccel"`
+	BrakeAccel        float64   `json:"brakeAccel"`
+	BoostMult         float64   `json:"boostMult"`
+	Drag              float64   `json:"drag"`
+	MaxSpeed          float64   `json:"maxSpeed"`
+	BoostMaxSpeed     float64   `json:"boostMaxSpeed"`
+	BoostFuelMax      float64   `json:"boostFuelMax"`
+	BoostRechargeRate float64   `json:"boostRechargeRate"`
+	TurnFactor        float64   `json:"turnFactor"`
+	RollRate          float64   `json:"rollRate"`
+	MouseGain         float64   `json:"mouseGain"`
+	IntentLag         float64   `json:"intentLag"`
+	MouseRecenter     float64   `json:"mouseRecenter"`
+	HitPulseDecay     float64   `json:"hitPulseDecay"`
+	InvulnOnReset     float64   `json:"invulnOnReset"`
+	InvulnOnRespawn   float64   `json:"invulnOnRespawn"`
+	GunInterval       float64   `json:"gunInterval"`
+	MissileInterval   float64   `json:"missileInterval"`
+	CannonMuzzle      float64   `json:"cannonMuzzle"`
+	BoltTtl           float64   `json:"boltTtl"`
+	MissileMuzzle     float64   `json:"missileMuzzle"`
+	MissileLife       float64   `json:"missileLife"`
+	GunHardpoint      Hardpoint `json:"gunHardpoint"`
+	MissileHardpoint  Hardpoint `json:"missileHardpoint"`
 }
 
 // EnemyType mirrors one entry of K.types.

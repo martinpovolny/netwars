@@ -67,6 +67,12 @@
     background: var(--amber); opacity: 0.85;
   }
   .gauge .lbl { position: absolute; left: 0; right: 0; top: -20px; text-align: center; color: var(--green); font-size: 13px; }
+  /* boost fuel: shorter (it's a few seconds, not a flight stat), green fill,
+     dims to the dead colour once spent — the same "nothing left" cue as an
+     unlit vel bar, so an empty gauge reads as empty, not just low. */
+  .boost-gauge { height: 80px; }
+  .boost-gauge .fill { background: var(--green); }
+  .boost-gauge.empty .fill { background: var(--dim); }
 
   /* centre heading indicator: a cross with the centre missing */
   #heading {
@@ -320,6 +326,7 @@
 
   <div id="gauges">
     <div class="gauge"><div class="fill" id="vel-fill"></div><span class="lbl">V</span></div>
+    <div class="gauge boost-gauge" id="boost-gauge"><div class="fill" id="boost-fill"></div><span class="lbl">B</span></div>
   </div>
 
   <!-- missile seeker / lock ring at screen centre -->

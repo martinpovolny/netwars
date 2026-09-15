@@ -324,7 +324,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
 
   // ---- snapshot -> world ------------------------------------
   // reconcile scratch: authoritative ship state + replay of unacked inputs.
-  const _recon = { position: new THREE.Vector3(), velocity: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+  const _recon = { position: new THREE.Vector3(), velocity: new THREE.Vector3(), quaternion: new THREE.Quaternion(), boostFuel: 0, boosting: false };
   // camErr holds the still-visible part of a correction; the frame loop eases
   // it to zero so the *view* doesn't pop at the snapshot rate. Kept small — it
   // offsets the camera from where the server spawns our bolts.
@@ -345,6 +345,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       player.position.set(sh.p[0], sh.p[1], sh.p[2]);
       player.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
       player.quaternion.set(sh.q[0], sh.q[1], sh.q[2], sh.q[3]);
+      player.boostFuel = sh.bf;
     } else {
       // Prediction reconcile: drop inputs the server has acked, anchor on the
       // authoritative ship, then re-apply every input still in flight through
@@ -357,6 +358,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       _recon.position.set(sh.p[0], sh.p[1], sh.p[2]);
       _recon.velocity.set(sh.v[0], sh.v[1], sh.v[2]);
       _recon.quaternion.set(sh.q[0], sh.q[1], sh.q[2], sh.q[3]);
+      _recon.boostFuel = sh.bf;
       for (const e of inputLog) stepShip(_recon, e.ctrl, e.dt, K.player);
 
       const err = player.position.distanceTo(_recon.position);
@@ -373,6 +375,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
       player.position.copy(_recon.position);
       player.velocity.copy(_recon.velocity);
       player.quaternion.copy(_recon.quaternion);
+      player.boostFuel = _recon.boostFuel;
+      player.boosting = _recon.boosting;
     }
 
     syncOthers(s.others || []);

@@ -20,6 +20,7 @@ type Ship struct {
 	Alive       bool
 	Invuln      float64
 	HitPulse    float64
+	BoostFuel   float64 // seconds of boost left; StepShip drains/recharges it
 }
 
 // GuidePos / GuideDead satisfy guideTarget (weapons.go) — a deathmatch

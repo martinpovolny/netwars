@@ -85,15 +85,16 @@ type Vec3 [3]float64
 type Quat [4]float64
 
 type ShipS struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"n,omitempty"`
-	Pos      Vec3    `json:"p"`
-	Vel      Vec3    `json:"v"`
-	Quat     Quat    `json:"q"`
-	Hull     float64 `json:"hull"`
-	MaxHull  float64 `json:"maxHull,omitempty"`
-	Missiles int     `json:"msl"`
-	Alive    bool    `json:"alive"`
+	ID        string  `json:"id"`
+	Name      string  `json:"n,omitempty"`
+	Pos       Vec3    `json:"p"`
+	Vel       Vec3    `json:"v"`
+	Quat      Quat    `json:"q"`
+	Hull      float64 `json:"hull"`
+	MaxHull   float64 `json:"maxHull,omitempty"`
+	Missiles  int     `json:"msl"`
+	Alive     bool    `json:"alive"`
+	BoostFuel float64 `json:"bf"` // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
 }
 
 type EnemyS struct {
