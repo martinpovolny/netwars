@@ -496,7 +496,13 @@ function runOnline({ ws, welcome }, { mode, name }) {
     bonuses.update(dt);
     weapons.update(dt);
     explosions.update(dt);
-    radar.update(player, enemies, pods, bonuses, world.others);
+    const radarMissiles = [];
+    for (let mi = 0; mi < pr.max; mi++) {
+      if (pr.ttl[mi] > 0 && pr.kind[mi] === 'missile') {
+        radarMissiles.push({ position: pr.pos[mi], mine: pr.own[mi] === pr.selfId });
+      }
+    }
+    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles);
     orient.update(player);
 
     if (wasAlive && !player.alive) {

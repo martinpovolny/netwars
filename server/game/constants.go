@@ -38,6 +38,7 @@ type PlayerBlock struct {
 	BoostMult        float64   `json:"boostMult"`
 	Drag             float64   `json:"drag"`
 	MaxSpeed         float64   `json:"maxSpeed"`
+	BoostMaxSpeed    float64   `json:"boostMaxSpeed"`
 	TurnFactor       float64   `json:"turnFactor"`
 	RollRate         float64   `json:"rollRate"`
 	MouseGain        float64   `json:"mouseGain"`

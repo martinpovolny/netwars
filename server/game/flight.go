@@ -49,10 +49,16 @@ func StepShip(ship *Ship, c Control, dt float64, kp PlayerBlock) {
 		ship.Vel.MultiplyScalar(math.Max(0, 1-4*dt))
 	}
 
-	// ambient drag + speed cap + integrate
+	// ambient drag + speed cap + integrate — the cap itself lifts while
+	// boosting (twin of shared/sim/flight.js#stepShip; see the comment
+	// there for why releasing boost reverts it immediately)
 	ship.Vel.MultiplyScalar(math.Max(0, 1-kp.Drag*dt))
-	if ship.Vel.Length() > kp.MaxSpeed {
-		ship.Vel.SetLength(kp.MaxSpeed)
+	cap := kp.MaxSpeed
+	if c.Boost {
+		cap = kp.BoostMaxSpeed
+	}
+	if ship.Vel.Length() > cap {
+		ship.Vel.SetLength(cap)
 	}
 	ship.Pos.AddScaledVector(ship.Vel, dt)
 }

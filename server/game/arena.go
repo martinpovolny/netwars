@@ -414,6 +414,28 @@ func (a *Arena) dmProjectiles() []Event {
 			}
 		}
 	}
+
+	// bolt-vs-missile: fly straight at an incoming missile and shoot it
+	// down before it reaches you. A missile can't intercept another
+	// missile, and can't be shot down by its own shooter's bolts.
+	ir := kw["missileInterceptRadius"]
+	for i := 0; i < pr.Max; i++ {
+		if pr.Ttl[i] <= 0 || pr.Kind[i] != kindMsl {
+			continue
+		}
+		for j := 0; j < pr.Max; j++ {
+			if j == i || pr.Ttl[j] <= 0 || pr.Kind[j] == kindMsl || pr.Owner[j] == pr.Owner[i] {
+				continue
+			}
+			if pr.Pos[i].DistanceToSq(pr.Pos[j]) < ir*ir {
+				pr.Ttl[i] = 0
+				pr.Ttl[j] = 0
+				evs = append(evs, Event{Kind: "missileBurst", Pos: pr.Pos[i]})
+				break
+			}
+		}
+	}
+
 	return evs
 }
 

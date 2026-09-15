@@ -223,6 +223,76 @@ func TestArenaDeathmatchMissileLocksOntoPlayer(t *testing.T) {
 	}
 }
 
+// Deathmatch: an incoming missile can be shot down with a well-aimed cannon
+// bolt before it reaches its target — its own shooter's bolts don't count.
+func TestArenaDeathmatchMissileShotDown(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-msl-shotdown", "dm", "dm-shotdown")
+	p1 := joinBare(a) // fires the missile
+	p2 := joinBare(a) // shoots it down; also the missile's intended victim
+	p1.Ship.Pos = Vec3{}
+	p2.Ship.Pos = Vec3{Z: -2000} // well clear of the intercept point
+	p2.Ship.Invuln = 0
+	p2.Ship.Hull = p2.Ship.MaxHull
+
+	pr := a.world.Projectiles
+	mslPos := Vec3{X: 100, Z: -100}
+	pr.Spawn(mslPos, Vec3{}, "player", k.Player.MissileLife, nil, kindMsl, p1.ID)
+	mslIdx := (pr.Cursor - 1 + pr.Max) % pr.Max
+	// a bolt from p2, close enough to the missile to intercept it but nowhere
+	// near either ship, so this tick can't be explained by a ship hit instead
+	boltPos := Vec3{X: 105, Z: -100}
+	pr.Spawn(boltPos, Vec3{}, "player", k.Player.BoltTtl, nil, kindBolt, p2.ID)
+	boltIdx := (pr.Cursor - 1 + pr.Max) % pr.Max
+
+	evs := a.dmProjectiles()
+
+	if pr.Ttl[mslIdx] > 0 {
+		t.Fatalf("missile survived the intercepting bolt (ttl %v)", pr.Ttl[mslIdx])
+	}
+	if pr.Ttl[boltIdx] > 0 {
+		t.Fatalf("intercepting bolt survived (ttl %v)", pr.Ttl[boltIdx])
+	}
+	if p2.Ship.Hull != p2.Ship.MaxHull {
+		t.Fatalf("p2 took damage (hull %v) — the missile should never have reached it", p2.Ship.Hull)
+	}
+	found := false
+	for _, ev := range evs {
+		if ev.Kind == "missileBurst" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a missileBurst event, got %+v", evs)
+	}
+}
+
+// A missile can't be shot down by its own shooter's bolts.
+func TestArenaDeathmatchMissileNotShotDownBySameOwner(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-msl-friendly", "dm", "dm-friendly")
+	p1 := joinBare(a)
+	p1.Ship.Pos = Vec3{}
+
+	pr := a.world.Projectiles
+	mslPos := Vec3{X: 100, Z: -100}
+	pr.Spawn(mslPos, Vec3{}, "player", k.Player.MissileLife, nil, kindMsl, p1.ID)
+	mslIdx := (pr.Cursor - 1 + pr.Max) % pr.Max
+	pr.Spawn(Vec3{X: 105, Z: -100}, Vec3{}, "player", k.Player.BoltTtl, nil, kindBolt, p1.ID)
+
+	a.dmProjectiles()
+
+	if pr.Ttl[mslIdx] <= 0 {
+		t.Fatalf("missile was shot down by its own shooter's bolt")
+	}
+}
+
 // Deathmatch: ramming another player hurts both and, on a kill, frags for
 // the survivor.
 func TestArenaDeathmatchRam(t *testing.T) {

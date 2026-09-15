@@ -10,6 +10,7 @@
     "boostMult": 2.4,
     "drag": 0.02,
     "maxSpeed": 620,
+    "boostMaxSpeed": 1700,
     "turnFactor": 1.9,
     "rollRate": 2.0,
     "mouseGain": 0.0042,
@@ -43,7 +44,8 @@
     "missileSelfPropel": 1.6,
     "missileMaxSpeed": 1500,
     "missileGuideDelay": 0.35,
-    "missileGuideRate": 0.01
+    "missileGuideRate": 0.01,
+    "missileInterceptRadius": 20
   },
 
   "enemy": {

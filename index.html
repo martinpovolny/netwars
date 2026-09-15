@@ -165,6 +165,26 @@
     box-shadow: 0 0 40px rgba(255, 43, 43, 0.22);
   }
   #dead .sub { display: block; margin-top: 10px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
+
+  /* single-player pause: a clickable button (outside #hud, which is
+     pointer-events:none) plus a centre banner styled like #dead. */
+  #pause-btn {
+    position: fixed; left: 16px; top: 14px; z-index: 50;
+    padding: 6px 14px; font: inherit; font-size: 12px; letter-spacing: 2px;
+    text-transform: uppercase; cursor: pointer;
+    background: rgba(0, 0, 0, 0.5); color: var(--green); border: 1px solid var(--green);
+  }
+  #pause-btn:hover { background: rgba(53, 224, 74, 0.15); }
+  #pause-btn.on { color: var(--amber); border-color: var(--amber); }
+  #paused {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    display: none; text-align: center; color: var(--amber); font-size: 30px;
+    letter-spacing: 6px; padding: 14px 40px;
+    background: rgba(4, 2, 10, 0.55); border: 1px solid var(--amber);
+    box-shadow: 0 0 40px rgba(255, 43, 43, 0.22);
+  }
+  #paused.show { display: block; }
+  #paused .sub { display: block; margin-top: 10px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
   #dead .key { display: block; margin-top: 4px; font-size: 14px; color: var(--green); letter-spacing: 1px; }
 
   /* inset labels (viewports themselves are drawn by WebGL) */
@@ -288,6 +308,8 @@
   </div>
 </div>
 
+<button id="pause-btn" type="button">&#10074;&#10074; Pause</button>
+
 <div id="hud">
   <div id="hpbar"><div class="fill" id="hpbar-fill"></div></div>
 
@@ -336,11 +358,14 @@
     <span class="sub" id="dead-sub"></span>
     <span class="key">watching the battle · press any key to relaunch</span>
   </div>
+  <div id="paused">Paused
+    <span class="sub">press P or click Pause to resume</span>
+  </div>
 
   <div id="axis-label">Orientation</div>
   <div id="radar-label">Scanner</div>
 
-  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space cannon &nbsp;·&nbsp; F / RMB missile &nbsp;·&nbsp; [ / ] scan zoom &nbsp;·&nbsp; Enter fullscreen &nbsp;·&nbsp; M music &nbsp;·&nbsp; L constellations &nbsp;·&nbsp; H help</div>
+  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space cannon &nbsp;·&nbsp; F / RMB missile &nbsp;·&nbsp; [ / ] scan zoom &nbsp;·&nbsp; Enter fullscreen &nbsp;·&nbsp; M music &nbsp;·&nbsp; L constellations &nbsp;·&nbsp; P pause &nbsp;·&nbsp; H help</div>
 </div>
 
 <script type="importmap">

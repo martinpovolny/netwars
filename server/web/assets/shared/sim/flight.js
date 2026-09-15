@@ -40,7 +40,15 @@ export function stepShip(ship, control, dt, K) {
   if (control.stop) ship.velocity.multiplyScalar(Math.max(0, 1 - 4 * dt));
 
   // --- ambient drag (tiny) + speed cap + integrate ---
+  // the cap itself lifts while boosting (boostMaxSpeed, well above a
+  // missile's cruise speed) so holding boost in a straight line is a real
+  // way to outrun a missile, not just a faster way to reach the same wall.
+  // Releasing boost mid-chase reverts the cap immediately rather than
+  // easing back down — a deliberate simplification: it only bites if you
+  // let off the throttle while still above the base cap, i.e. after you've
+  // already opened the gap that mattered.
   ship.velocity.multiplyScalar(Math.max(0, 1 - K.drag * dt));
-  if (ship.velocity.length() > K.maxSpeed) ship.velocity.setLength(K.maxSpeed);
+  const cap = control.boost ? K.boostMaxSpeed : K.maxSpeed;
+  if (ship.velocity.length() > cap) ship.velocity.setLength(cap);
   ship.position.addScaledVector(ship.velocity, dt);
 }
