@@ -71,7 +71,8 @@
     "ramDmg": 26,
     "ramKnockback": 150,
     "podStrikeDmg": 20,
-    "podStrikeKnockback": 120
+    "podStrikeKnockback": 120,
+    "podStrikeCd": 0.6
   },
 
   "types": {

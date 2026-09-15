@@ -194,7 +194,7 @@ func (w *World) StepWorld(dt float64) []Event {
 				events = append(events, ram)
 			}
 		}
-		events = append(events, checkPodStrikes(w.Fleet, w.Pods, ke)...)
+		events = append(events, checkPodStrikes(w.Fleet, w.Pods, ke, dt)...)
 	}
 
 	// 5. projectiles

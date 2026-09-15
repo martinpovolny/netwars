@@ -35,6 +35,9 @@ export function makeEnemyState(typeKey, ENEMY_TYPES, KE, rng = Math.random) {
     fireCd: t.fireGap[0] + rng() * (t.fireGap[1] - t.fireGap[0]),
     strafeSign: rng() < 0.5 ? -1 : 1,
     repick: 0,
+    podStrikeCd: 0,   // brief invuln after a pod ram so one contact = one hit,
+                       // not a whole tick-rate's worth of damage while it's
+                       // still overlapping and hasn't been knocked clear yet
     _targetPod: null,
     _loot: null,
 
@@ -147,20 +150,29 @@ export function checkRam(fleet, player, KE) {
 // the enemy is shoved off. Only a lethal bump surfaces an event (matching the
 // old checkPodStrikes, which drew FX on kill only). Returns events[]
 // ({ kind:'podStrikeKill', pos, pod }).
-export function checkPodStrikes(fleet, pods, KE) {
+//
+// podStrikeCd debounces this per enemy: the knockback takes a tick or two to
+// actually carry the enemy clear of the pod's radius, and without a cooldown
+// every one of those overlapping ticks landed a fresh podStrikeDmg — so a
+// single ram could burn through a pod's whole HP before it visibly separated,
+// reading as "one hit" instead of the two the numbers imply.
+export function checkPodStrikes(fleet, pods, KE, dt) {
   const events = [];
   for (const e of fleet.list) {
-    if (e.dead || e.behavior === 'thief') continue;
+    if (e.podStrikeCd > 0) e.podStrikeCd -= dt;
+    if (e.dead || e.behavior === 'thief' || e.podStrikeCd > 0) continue;
     for (const p of pods.list) {
       if (p.dead) continue;
       if (e.position.distanceToSquared(p.position) < (e.radius + p.radius) ** 2) {
         p.hp -= KE.podStrikeDmg;
+        e.podStrikeCd = KE.podStrikeCd;
         if (p.hp <= 0) {
           p.dead = true;
           events.push({ kind: 'podStrikeKill', pos: p.position.clone(), pod: p });
         }
         const away = e.position.clone().sub(p.position).normalize();
         e.velocity.addScaledVector(away, KE.podStrikeKnockback);
+        break;
       }
     }
   }

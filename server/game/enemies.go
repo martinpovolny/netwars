@@ -199,10 +199,20 @@ func checkRam(f *Fleet, ship *Ship, ke Block) (Event, bool) {
 }
 
 // checkPodStrikes — non-thief enemies bump pods. Lethal bumps surface an event.
-func checkPodStrikes(f *Fleet, pods *Pods, ke Block) []Event {
+//
+// podStrikeCd debounces this per enemy: the knockback takes a tick or two to
+// actually carry the enemy clear of the pod's radius, and without a cooldown
+// every one of those overlapping ticks landed a fresh podStrikeDmg — so a
+// single ram could burn through a pod's whole HP before it visibly separated,
+// reading as "one hit" instead of the two the numbers imply (twin of
+// shared/sim/enemies.js#checkPodStrikes).
+func checkPodStrikes(f *Fleet, pods *Pods, ke Block, dt float64) []Event {
 	var events []Event
 	for _, e := range f.List {
-		if e.Dead || e.Behavior == "thief" {
+		if e.PodStrikeCd > 0 {
+			e.PodStrikeCd -= dt
+		}
+		if e.Dead || e.Behavior == "thief" || e.PodStrikeCd > 0 {
 			continue
 		}
 		for _, p := range pods.List {
@@ -212,6 +222,7 @@ func checkPodStrikes(f *Fleet, pods *Pods, ke Block) []Event {
 			rr := e.Radius + p.Radius
 			if e.Position.DistanceToSq(p.Position) < rr*rr {
 				p.HP -= ke["podStrikeDmg"]
+				e.PodStrikeCd = ke["podStrikeCd"]
 				if p.HP <= 0 {
 					p.Dead = true
 					events = append(events, Event{Kind: "podStrikeKill", Pos: p.Position})
@@ -219,6 +230,7 @@ func checkPodStrikes(f *Fleet, pods *Pods, ke Block) []Event {
 				away := e.Position
 				away.Sub(p.Position).Normalize()
 				e.Velocity.AddScaledVector(away, ke["podStrikeKnockback"])
+				break
 			}
 		}
 	}

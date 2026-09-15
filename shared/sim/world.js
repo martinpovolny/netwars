@@ -78,7 +78,7 @@ export function stepWorld(world, dt) {
   if (dt > 0) {
     const ram = checkRam(fleet, ship, K.enemy);
     if (ram) events.push({ kind: 'ram', pos: ram.pos });
-    for (const pe of checkPodStrikes(fleet, pods, K.enemy)) events.push(pe);
+    for (const pe of checkPodStrikes(fleet, pods, K.enemy, dt)) events.push(pe);
   }
 
   // 5. projectiles — motion, guidance, hit resolution
