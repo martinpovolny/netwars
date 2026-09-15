@@ -14,9 +14,19 @@ import { HUD } from './hud.js';
 import { PODS_PER_LEVEL, ENEMY_TYPES, goalsForLevel } from './levels.js';
 import K from '../shared/constants.js';
 import { makeWorld, startWorldLevel, stepWorld } from '../shared/sim/world.js';
+import { showFatalError } from './webgl.js';
 
 const canvas = document.getElementById('view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+} catch (err) {
+  // main.js already checks hasWebGL() before importing this module, but a
+  // browser can pass that probe and still fail to hand out a real context
+  // (driver blocklist, "too many active WebGL contexts", ...).
+  showFatalError(String(err && err.message || err));
+  throw err;
+}
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 renderer.autoClear = false;
 

@@ -7,6 +7,16 @@
 // never sent to the host and the recipient always gets a chance to look
 // before joining.
 
+import { hasWebGL, showFatalError } from './webgl.js';
+
+// Fail fast, before the player ever sees LAUNCH: sp.js and net.js both
+// build a THREE.WebGLRenderer as one of their first acts, which throws if
+// the browser can't hand back a WebGL context. Better to say so plainly
+// than to launch into a blank canvas.
+if (!hasWebGL()) {
+  showFatalError('Detected no WebGLRenderingContext on this device.');
+}
+
 // Suppress browser page-zoom over the game: macOS trackpad / Magic Mouse
 // double-tap "smart zoom" and pinch arrive as Safari gesture events or as a
 // ctrl-modified wheel in Chrome — the canvas wants the raw stream.

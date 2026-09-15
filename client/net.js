@@ -23,6 +23,7 @@ import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
 import { ENEMY_TYPES } from './levels.js';
 import { makePlayerShip } from './ships.js';
+import { showFatalError } from './webgl.js';
 import K from '../shared/constants.js';
 
 const HELLO_TIMEOUT = 6000;
@@ -78,7 +79,16 @@ function runOnline({ ws, welcome }, { mode, name }) {
   const myName = name || welcome.playerId;
   // ---- render shell (mirrors client/sp.js) --------------------------
   const canvas = document.getElementById('view');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  } catch (err) {
+    // main.js already checks hasWebGL() before importing this module, but a
+    // browser can pass that probe and still fail to hand out a real context
+    // (driver blocklist, "too many active WebGL contexts", ...).
+    showFatalError(String(err && err.message || err));
+    throw err;
+  }
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.autoClear = false;
 
