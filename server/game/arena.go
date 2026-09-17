@@ -161,7 +161,7 @@ func (a *Arena) run(ctx context.Context) {
 			a.players[p.ID] = p
 			a.order = append(a.order, p.ID)
 			if a.dm {
-				p.Ship.Pos = a.dmSpawnPos()
+				p.Ship.Pos = a.dmSpawnPos(p.ID)
 				p.Ship.Invuln = a.k.Player.InvulnOnRespawn
 			} else {
 				p.Ship.Pos = spawnSlot(len(a.order) - 1)
@@ -341,7 +341,7 @@ func (a *Arena) stepDM() {
 			}
 			if p.respawnCd -= tickDT; p.respawnCd <= 0 {
 				resetShip(p.Ship, a.k)
-				p.Ship.Pos = a.dmSpawnPos()
+				p.Ship.Pos = a.dmSpawnPos(p.ID)
 				p.Ship.Invuln = a.k.Player.InvulnOnRespawn
 				p.respawnCd = 0
 			}
@@ -591,18 +591,47 @@ func (a *Arena) restartMatch() {
 		p.frags = 0
 		p.respawnCd = 0
 		resetShip(p.Ship, a.k)
-		p.Ship.Pos = a.dmSpawnPos()
+		p.Ship.Pos = a.dmSpawnPos(p.ID)
 		p.Ship.Invuln = a.k.Player.InvulnOnRespawn
 	}
 }
 
-// dmSpawnPos drops a respawning fighter onto a random point ~700 u out, so
-// players don't materialise on top of each other.
-func (a *Arena) dmSpawnPos() Vec3 {
-	var d Vec3
-	RandomDir(a.world.Rng, &d)
-	d.MultiplyScalar(550 + a.world.Rng.Float64()*400)
-	return d
+// dmSpawnPos drops a (re)spawning fighter onto a random point ~550-950u out,
+// retrying if the draw lands too close to another currently-alive ship — a
+// plain random draw with no separation check could, and did, put two players
+// right on top of each other (or close enough that one dies before it can
+// react), especially with 3+ players sharing that same ring. selfID excludes
+// the ship being (re)positioned itself: at join time it already sits at the
+// zero-value origin with Alive still true, which would otherwise bias every
+// candidate away from (0,0,0) for no reason.
+func (a *Arena) dmSpawnPos(selfID string) Vec3 {
+	const minSep = 400.0 // clear every other alive ship by at least this
+	const maxTries = 10
+	best, bestD := Vec3{}, -1.0
+	for try := 0; try < maxTries; try++ {
+		var d Vec3
+		RandomDir(a.world.Rng, &d)
+		d.MultiplyScalar(550 + a.world.Rng.Float64()*400)
+
+		nd := math.Inf(1)
+		for _, id := range a.order {
+			if id == selfID {
+				continue
+			}
+			if sh := a.players[id].Ship; sh.Alive {
+				if dd := d.DistanceTo(sh.Pos); dd < nd {
+					nd = dd
+				}
+			}
+		}
+		if nd >= minSep {
+			return d
+		}
+		if nd > bestD {
+			bestD, best = nd, d
+		}
+	}
+	return best // crowded arena: couldn't find a fully clear spot, use the least-bad draw
 }
 
 // fireWeapons — the Go twin of the cannon / missile spawn in client/player.js.

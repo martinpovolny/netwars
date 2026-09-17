@@ -62,6 +62,7 @@
     "maxAlive": 5,
     "spawnMin": 1500,
     "spawnRange": 800,
+    "podClearance": 900,
     "aiFireDefaultAimDot": 0.985,
     "leashSoft": 5000,
     "leashHard": 6500,

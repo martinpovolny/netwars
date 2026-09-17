@@ -98,7 +98,7 @@ func makeEnemyState(typeKey string, k *Constants, rng *Rng) *Enemy {
 }
 
 // spawnEnemy — 6 rng draws: key index, fireCd, strafeSign, dir(2), mag.
-func spawnEnemy(f *Fleet, anchor, playerPos Vec3, k *Constants, rng *Rng) bool {
+func spawnEnemy(f *Fleet, anchor, playerPos Vec3, k *Constants, rng *Rng, pods []*Pod) bool {
 	keys := make([]string, 0, len(f.Pending))
 	for _, e := range f.Pending {
 		if e.N > 0 {
@@ -118,6 +118,44 @@ func spawnEnemy(f *Fleet, anchor, playerPos Vec3, k *Constants, rng *Rng) bool {
 	RandomDir(rng, &dir)
 	dir.MultiplyScalar(k.Enemy["spawnMin"] + rng.Float64()*k.Enemy["spawnRange"]).Add(anchor)
 	e.Position = dir
+
+	// The draw above only guarantees distance from the pod CENTROID, not
+	// from any individual pod — once several pods are destroyed, the
+	// centroid can sit right between a couple of scattered survivors, each
+	// still up to pods.spawnMin+spawnRange from it, so a "far from the
+	// fight" spawn could still land within a few hundred units of one
+	// specific pod. Push clear of any pod inside podClearance; a couple of
+	// relaxation passes since pushing away from one pod can walk into
+	// another. Pure vector math on an already-drawn position — no extra
+	// rng draws, so it can't perturb the deterministic spawn sequence
+	// golden-vector parity depends on (twin of shared/sim/enemies.js).
+	if clearance := k.Enemy["podClearance"]; clearance > 0 {
+		for pass := 0; pass < 3; pass++ {
+			moved := false
+			for _, p := range pods {
+				if p.Dead {
+					continue
+				}
+				d := e.Position.DistanceTo(p.Position)
+				if d >= clearance {
+					continue
+				}
+				var away Vec3
+				if d > 1e-6 {
+					away = e.Position
+					away.Sub(p.Position).MultiplyScalar(1 / d)
+				} else {
+					away = fwd // degenerate: landed exactly on the pod
+				}
+				e.Position = p.Position
+				e.Position.AddScaledVector(away, clearance)
+				moved = true
+			}
+			if !moved {
+				break
+			}
+		}
+	}
 
 	to := playerPos
 	to.Sub(e.Position).Normalize()
@@ -171,7 +209,7 @@ func stepFleet(f *Fleet, w *World, dt float64, k *Constants) []Event {
 		anchor = w.Pods.Centroid
 	}
 	for len(f.List) < int(ke["maxAlive"]) && fleetPendingRemaining(f) > 0 {
-		if !spawnEnemy(f, anchor, ship.Pos, k, w.Rng) {
+		if !spawnEnemy(f, anchor, ship.Pos, k, w.Rng, w.Pods.List) {
 			break
 		}
 	}
