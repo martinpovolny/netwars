@@ -69,6 +69,11 @@ type Input struct {
 	MslTarget int `json:"mt"`
 	// deathmatch: id of the other player's ship locked instead, "" = none.
 	MslTargetPlayer string `json:"mp,omitempty"`
+	// this client's own measured RTT to the server (ms), self-reported so
+	// other players can see it next to this player's name — ping/pong only
+	// round-trips this one connection, it never reaches anyone else on its
+	// own, so it has to ride along on Input instead. 0 = not yet measured.
+	Rtt float64 `json:"rt,omitempty"`
 }
 
 type Ping struct {
@@ -105,7 +110,8 @@ type ShipS struct {
 	MaxHull   float64 `json:"maxHull,omitempty"`
 	Missiles  int     `json:"msl"`
 	Alive     bool    `json:"alive"`
-	BoostFuel float64 `json:"bf"` // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
+	BoostFuel float64 `json:"bf"`           // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
+	Rtt       float64 `json:"rt,omitempty"` // others only — that player's own self-reported RTT to the server, ms
 }
 
 type EnemyS struct {
@@ -159,10 +165,11 @@ type Snapshot struct {
 
 // ScoreS is one row of the deathmatch scoreboard.
 type ScoreS struct {
-	ID    string `json:"id"`
-	Name  string `json:"n"`
-	Frags int    `json:"f"`
-	Alive bool   `json:"a"`
+	ID    string  `json:"id"`
+	Name  string  `json:"n"`
+	Frags int     `json:"f"`
+	Alive bool    `json:"a"`
+	Rtt   float64 `json:"rt,omitempty"` // that player's own self-reported RTT to the server, ms
 }
 
 type EventS struct {

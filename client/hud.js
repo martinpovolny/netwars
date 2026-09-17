@@ -7,6 +7,16 @@ function fmtClock(seconds) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+// per-player RTT badge next to a scoreboard/roster name — 0/unset (not yet
+// measured, e.g. the first second after joining) renders nothing rather
+// than a misleading "0ms". Color escalates the same way the hull % does,
+// so a rough-looking ship's connection is explained at a glance.
+function fmtRttSpan(ms) {
+  if (!ms || ms <= 0) return '';
+  const cls = ms > 250 ? ' crit' : ms > 120 ? ' warn' : '';
+  return `<span class="rt${cls}">${Math.round(ms)}ms</span>`;
+}
+
 export class HUD {
   constructor() {
     this.score = document.getElementById('score');
@@ -131,7 +141,7 @@ export class HUD {
         if (lock.fragLimit) title += ` <span class="limit">· to ${lock.fragLimit}</span>`;
         if (lock.timeLeft > 0) title += ` <span class="limit">· ${fmtClock(lock.timeLeft)}</span>`;
         this._setBoard(`<div class="btitle">${title}</div>` + (lock.board || [])
-          .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${escName(r.n)}</span><span class="frag">${r.f | 0}</span></div>`)
+          .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${escName(r.n)}${fmtRttSpan(r.rt)}</span><span class="frag">${r.f | 0}</span></div>`)
           .join(''));
       }
     } else {
@@ -152,7 +162,7 @@ export class HUD {
             const pct = Math.max(0, Math.round(100 * (r.hull / (r.maxHull || 1))));
             const cls = r.id === lock.selfId ? ' me' : '';
             const hpCls = !r.a ? ' out' : pct < 28 ? ' crit' : pct < 55 ? ' warn' : '';
-            return `<div class="brow${cls}"><span>${escName(r.n)}</span><span class="hp${hpCls}">${r.a ? pct + '%' : 'OUT'}</span></div>`;
+            return `<div class="brow${cls}"><span>${escName(r.n)}${fmtRttSpan(r.rt)}</span><span class="hp${hpCls}">${r.a ? pct + '%' : 'OUT'}</span></div>`;
           })
           .join(''));
       } else if (this.board) {

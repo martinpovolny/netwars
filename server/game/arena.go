@@ -38,6 +38,7 @@ type Player struct {
 	mslCd           float64
 	respawnCd       float64 // >0 while dead and counting down to respawn
 	frags           int     // deathmatch kills
+	rtt             float64 // this player's own self-reported RTT to the server (ms), from Input.Rtt — shown to other players next to their name
 }
 
 func (p *Player) send(b []byte) {
@@ -223,6 +224,12 @@ func (a *Arena) applyInput(p *Player, in proto.Input) {
 	}
 	p.mslTarget = in.MslTarget
 	p.mslTargetPlayer = in.MslTargetPlayer
+	// guard against a stale/missing 0 unlearning a previously known RTT —
+	// the client always sends its current best-known value, but that's 0
+	// for the first second or so after connecting, before its first pong.
+	if in.Rtt > 0 {
+		p.rtt = in.Rtt
+	}
 }
 
 func (a *Arena) step() {
@@ -529,7 +536,7 @@ func (a *Arena) board() []proto.ScoreS {
 		if name == "" {
 			name = id
 		}
-		rows = append(rows, proto.ScoreS{ID: id, Name: name, Frags: p.frags, Alive: p.Ship.Alive})
+		rows = append(rows, proto.ScoreS{ID: id, Name: name, Frags: p.frags, Alive: p.Ship.Alive, Rtt: p.rtt})
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Frags > rows[j].Frags })
 	return rows
