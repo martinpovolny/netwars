@@ -1,5 +1,22 @@
 import * as THREE from 'three';
 
+// log-scale zoom ladder. The first 5 steps (800..8000) are the original,
+// hand-tuned combat-range steps — unchanged. Six more continue at roughly
+// the same ~1.75x ratio out past 200,000u: comfortably beyond any distance
+// a drifting or boosting player could realistically reach mid-session, so
+// the auto zoom-out below (see Radar#_autoZoom) always has a wider step
+// left to try instead of ever just running out of road.
+function buildRadarRanges() {
+  const ranges = [800, 1500, 2600, 4500, 8000];
+  const ratio = 1.75, extraSteps = 6;
+  let r = ranges[ranges.length - 1];
+  for (let i = 0; i < extraSteps; i++) {
+    r *= ratio;
+    ranges.push(Math.round(r / 100) * 100);
+  }
+  return ranges;
+}
+
 // Bottom-right "scanner": a perspective grid plane aligned with the ship
 // (x = right, -z = forward). Each contact is a vertical line segment (stalk)
 // rising/falling from the plane by its relative altitude — the NetWars way of
@@ -7,7 +24,7 @@ import * as THREE from 'three';
 export class Radar {
   constructor() {
     // selectable scan range (world units mapped to the grid edge)
-    this.ranges = [800, 1500, 2600, 4500, 8000];
+    this.ranges = buildRadarRanges();
     this.rangeIndex = 2;
     this.range = this.ranges[this.rangeIndex];
     this.halfW = 10;         // grid half-width in radar space
@@ -58,11 +75,55 @@ export class Radar {
 
     this._inv = new THREE.Quaternion();
     this._rel = new THREE.Vector3();
+
+    // auto zoom-out: a player who drifts or boosts off the edge of their
+    // current range has nothing on radar and no cue which way to fly back.
+    // Once the radar has read completely empty for autoExpandDelay seconds
+    // straight, it starts stepping outward on its own (one ranges[] step
+    // every autoStepInterval) until a contact reappears or it tops out at
+    // the widest level — never zooms back in on its own, only out. A manual
+    // zoom (either direction, see `zoom()`) resets the grace timer, so
+    // deliberately zooming into empty space isn't instantly overridden.
+    this.autoExpandDelay = 0.8;
+    this.autoStepInterval = 0.15;
+    this._emptyT = 0;
+    this._stepCd = 0;
+    this._autoActive = false;   // currently mid-episode (for the one-shot "started" flag)
+    this._maxedNotified = false; // this episode already told the caller it topped out empty
+    this.autoZoomStarted = false;  // one-shot per episode: caller may flash a "scanning" message
+    this.autoZoomMaxedOut = false; // one-shot per episode: topped out and still nothing
   }
 
   // dir > 0 zooms in (shorter range), dir < 0 zooms out (longer range)
   zoom(dir) {
     this.rangeIndex = THREE.MathUtils.clamp(this.rangeIndex - Math.sign(dir), 0, this.ranges.length - 1);
+    this.range = this.ranges[this.rangeIndex];
+    this._emptyT = 0; // manual input always gets a fresh grace window before auto-expand reconsiders
+  }
+
+  // called from update() with whether anything was placed on radar this
+  // frame; steps rangeIndex outward on its own per the constructor comment.
+  _autoZoom(hasContacts, dt) {
+    this.autoZoomStarted = false;
+    this.autoZoomMaxedOut = false;
+    if (hasContacts) {
+      this._emptyT = 0;
+      this._stepCd = 0;
+      this._autoActive = false;
+      this._maxedNotified = false;
+      return;
+    }
+    this._emptyT += dt;
+    if (this._emptyT < this.autoExpandDelay) return;
+    if (this.rangeIndex >= this.ranges.length - 1) {
+      if (!this._maxedNotified) { this._maxedNotified = true; this.autoZoomMaxedOut = true; }
+      return;
+    }
+    this._stepCd -= dt;
+    if (this._stepCd > 0) return;
+    this._stepCd = this.autoStepInterval;
+    if (!this._autoActive) { this._autoActive = true; this.autoZoomStarted = true; }
+    this.rangeIndex++;
     this.range = this.ranges[this.rangeIndex];
   }
 
@@ -95,7 +156,9 @@ export class Radar {
   // missiles: [{ position, mine }] — active missile-kind projectiles. `mine`
   // picks a calmer colour for your own outgoing shot; an opponent's missile
   // (the actual threat) shows as amber, flipping to red once it's close.
-  update(player, enemies, pods, bonuses, others, missiles) {
+  // dt drives the auto zoom-out (see _autoZoom) — omit it (e.g. a one-off
+  // render) to just skip that bookkeeping for the call.
+  update(player, enemies, pods, bonuses, others, missiles, dt = 0) {
     this._inv.copy(player.quaternion).invert();
     let i = 0;
 
@@ -119,6 +182,8 @@ export class Radar {
       this.blips[i].cube.visible = false;
       this.blips[i].line.visible = false;
     }
+
+    this._autoZoom(i > 0, dt);
   }
 
   render(renderer, r) {

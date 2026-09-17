@@ -543,7 +543,9 @@ function runOnline({ ws, welcome }, { mode, name }) {
         radarMissiles.push({ position: pr.pos[mi], mine: pr.own[mi] === pr.selfId });
       }
     }
-    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles);
+    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles, dt);
+    if (radar.autoZoomStarted) hud.flash('SCANNER AUTO-RANGING…', 1.2);
+    else if (radar.autoZoomMaxedOut) hud.flash('NO CONTACTS IN RANGE', 1.6);
     orient.update(player);
 
     if (wasAlive && !player.alive) {

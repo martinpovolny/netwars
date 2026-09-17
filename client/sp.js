@@ -228,7 +228,9 @@ function frame(now) {
   for (let mi = 0; mi < pr.max; mi++) {
     if (pr.ttl[mi] > 0 && pr.kind[mi] === 'missile') radarMissiles.push({ position: pr.pos[mi], mine: true });
   }
-  radar.update(player, enemies, pods, bonuses, null, radarMissiles);
+  radar.update(player, enemies, pods, bonuses, null, radarMissiles, simDt);
+  if (radar.autoZoomStarted) hud.flash('SCANNER AUTO-RANGING…', 1.2);
+  else if (radar.autoZoomMaxedOut) hud.flash('NO CONTACTS IN RANGE', 1.6);
   orient.update(player);
 
   // player just died -> mark the moment, hold the spectator camera here
