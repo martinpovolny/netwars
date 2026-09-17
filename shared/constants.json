@@ -129,6 +129,12 @@
     "brakeAllMult": 3.5
   },
 
+  "dm": {
+    "fragLimitDefault": 20,
+    "timeLimitDefault": 0,
+    "matchOverHold": 8
+  },
+
   "env": {
     "_note": "3-layer background (client render only). Layer 1: real HYG star catalogue (client/render/stars.json, built by tools/build-stars.mjs) placed by RA/Dec on a sphere that tracks the camera POSITION only — constellations sweep when you turn, never when you fly. Layer 2: near-field motes that streak with your speed. Layer 3: y=0 grid faded out by speed.",
 

@@ -24,13 +24,16 @@ func NewSessions(ctx context.Context, k *Constants) *Sessions {
 
 // getOrCreate returns the arena for (session, mode), starting its goroutine if
 // it's new. The seed is the session id so every arena / client agrees.
-func (s *Sessions) getOrCreate(session, mode string) *Arena {
+// fragLimit/timeLimit only apply to a brand-new dm arena — like mode, a
+// latecomer joining an existing session inherits whatever it was created
+// with, not their own hello's values.
+func (s *Sessions) getOrCreate(session, mode string, fragLimit int, timeLimit float64) *Arena {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if a, ok := s.arenas[session]; ok {
 		return a
 	}
-	a := newArena(s.k, session, mode, session)
+	a := newArena(s.k, session, mode, session, fragLimit, timeLimit)
 	a.onEmpty = func() {
 		s.mu.Lock()
 		delete(s.arenas, session)

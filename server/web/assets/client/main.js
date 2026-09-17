@@ -35,6 +35,9 @@ const elMpFields = document.getElementById('mp-fields');
 const elSession = document.getElementById('f-session');
 const elName = document.getElementById('f-name');
 const elMode = document.getElementById('f-mode');
+const elDmFields = document.getElementById('dm-fields');
+const elFragLimit = document.getElementById('f-fraglimit');
+const elTimeLimit = document.getElementById('f-timelimit');
 const elLaunch = document.getElementById('f-launch');
 const gtypeRadios = document.getElementsByName('gtype');
 
@@ -51,6 +54,14 @@ const wantMode = hp.get('mode');
 if (wantMode && [...elMode.options].some((o) => o.value === wantMode && !o.disabled)) {
   elMode.value = wantMode;
 }
+const wantFrags = hp.get('frags');
+if (wantFrags && [...elFragLimit.options].some((o) => o.value === wantFrags)) {
+  elFragLimit.value = wantFrags;
+}
+const wantTime = hp.get('time');
+if (wantTime && [...elTimeLimit.options].some((o) => o.value === wantTime)) {
+  elTimeLimit.value = wantTime;
+}
 
 // a link that already names a session defaults the picker to Multiplayer;
 // otherwise Single Player (the <input checked> in index.html) stays picked.
@@ -65,6 +76,13 @@ for (const r of gtypeRadios) {
   });
 }
 
+// match-limit fields only matter (and only show) for deathmatch — co-op ends
+// on clearing the level table, not on frags or a clock.
+elDmFields.classList.toggle('hidden', elMode.value !== 'dm');
+elMode.addEventListener('change', () => {
+  elDmFields.classList.toggle('hidden', elMode.value !== 'dm');
+});
+
 async function launch() {
   const mp = document.querySelector('input[name="gtype"]:checked').value === 'mp';
   elStart.classList.add('hidden');
@@ -75,15 +93,18 @@ async function launch() {
   const session = (elSession.value.trim() || randomSession()).slice(0, 24);
   const name = elName.value.trim().slice(0, 16);
   const mode = elMode.value;
+  const fragLimit = mode === 'dm' ? parseInt(elFragLimit.value, 10) || 0 : 0;
+  const timeLimit = mode === 'dm' ? parseInt(elTimeLimit.value, 10) || 0 : 0;
   if (name) { try { localStorage.setItem('nw-name', name); } catch { /* ignore */ } }
 
   // reflect the choice in the URL — shareable, and survives a reload
   const qs = new URLSearchParams({ mode });
   if (name) qs.set('name', name);
+  if (mode === 'dm') { qs.set('frags', fragLimit); qs.set('time', timeLimit); }
   history.replaceState(null, '', `#${encodeURIComponent(session)}?${qs}`);
 
   const { startNetwork } = await import('./net.js');
-  startNetwork({ session, serverId: hp.get('server_id'), mode, name });
+  startNetwork({ session, serverId: hp.get('server_id'), mode, name, fragLimit, timeLimit });
 }
 
 elLaunch.addEventListener('click', launch);

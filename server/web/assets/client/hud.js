@@ -1,5 +1,12 @@
 import { ENEMY_TYPES } from './levels.js';
 
+// deathmatch time-limit countdown, m:ss (rounds up so it never flashes 0:00
+// a tick before the match actually ends).
+function fmtClock(seconds) {
+  const s = Math.max(0, Math.ceil(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 export class HUD {
   constructor() {
     this.score = document.getElementById('score');
@@ -120,7 +127,10 @@ export class HUD {
       if (this.podsEl) this.podsEl.style.display = 'none';
       if (this.board) {
         this.board.style.display = 'block';
-        this._setBoard('<div class="btitle">FRAGS</div>' + (lock.board || [])
+        let title = 'FRAGS';
+        if (lock.fragLimit) title += ` <span class="limit">· to ${lock.fragLimit}</span>`;
+        if (lock.timeLeft > 0) title += ` <span class="limit">· ${fmtClock(lock.timeLeft)}</span>`;
+        this._setBoard(`<div class="btitle">${title}</div>` + (lock.board || [])
           .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${escName(r.n)}</span><span class="frag">${r.f | 0}</span></div>`)
           .join(''));
       }

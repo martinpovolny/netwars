@@ -52,6 +52,8 @@ type Event struct {
 	Action   LevelAction // level: what the FSM decided
 	Killer   string      // frag (dm): player id that scored the kill
 	Victim   string      // frag (dm): player id that died
+	Winner   string      // matchOver (dm): player id with the most frags, "" on a tie
+	Hold     float64     // matchOver (dm): seconds the results stay on screen
 }
 
 type World struct {

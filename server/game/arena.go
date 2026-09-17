@@ -28,10 +28,10 @@ type Player struct {
 	out  chan []byte // -> this client's write pump
 
 	// input state, updated by the arena from Input frames
-	ctrl      Control
-	lastSeq   int
-	wantGun   bool
-	wantMsl   bool
+	ctrl            Control
+	lastSeq         int
+	wantGun         bool
+	wantMsl         bool
 	mslTarget       int    // enemy index the client locked, -1 = none
 	mslTargetPlayer string // deathmatch: id of the other player locked, "" = none
 	gunCd           float64
@@ -66,6 +66,15 @@ type Arena struct {
 
 	dm bool // Mode == "dm" — no AI/pods, player-vs-player friendly fire, frags
 
+	// deathmatch match-end (0 = no limit); set at arena creation, fixed for
+	// the arena's lifetime. matchOverCd counts down while the results are
+	// on screen and combat/respawn is frozen; matchElapsed only advances
+	// while the match is live.
+	fragLimit    int
+	timeLimit    float64
+	matchElapsed float64
+	matchOverCd  float64
+
 	// run()-only
 	players map[string]*Player
 	order   []string // join order; order[0] drives StepWorld's focus ship
@@ -75,15 +84,20 @@ type Arena struct {
 	onEmpty func() // called when the last player leaves (registry teardown)
 }
 
-func newArena(k *Constants, session, mode, seed string) *Arena {
+// fragLimit/timeLimit (0 = no limit) only matter when mode is "dm" — the
+// caller decides, same as mode itself: whoever's hello creates the arena
+// sets it for the match's lifetime (see Sessions.getOrCreate).
+func newArena(k *Constants, session, mode, seed string, fragLimit int, timeLimit float64) *Arena {
 	a := &Arena{
 		Session: session, Mode: mode, k: k,
-		dm:      mode == "dm",
-		world:   NewWorld(k, seed),
-		join:    make(chan *Player),
-		leave:   make(chan *Player),
-		in:      make(chan arenaInput, 256),
-		players: map[string]*Player{},
+		dm:        mode == "dm",
+		fragLimit: fragLimit,
+		timeLimit: timeLimit,
+		world:     NewWorld(k, seed),
+		join:      make(chan *Player),
+		leave:     make(chan *Player),
+		in:        make(chan arenaInput, 256),
+		players:   map[string]*Player{},
 	}
 	return a
 }
@@ -158,6 +172,9 @@ func (a *Arena) run(ctx context.Context) {
 			}
 			if a.dm {
 				wel.Snapshot.Board = a.board()
+				wel.Snapshot.TimeLeft = a.timeLeft()
+				wel.FragLimit = a.fragLimit
+				wel.TimeLimit = a.timeLimit
 			}
 			p.send(proto.Marshal(wel))
 			log.Printf("arena %q: +%s (%d players)", a.Session, p.ID, len(a.players))
@@ -296,13 +313,21 @@ func (a *Arena) stepCoop() {
 
 // stepDM — the deathmatch tick: no fleet / pods / level FSM. Ships fly and
 // fire, bolts hurt every ship but their owner, a kill is a frag, the dead
-// respawn on a short timer.
+// respawn on a short timer. Once a frag/time limit is reached, the match
+// freezes (no physics, fire, respawn or combat resolution — everyone just
+// holds their final position) for matchOverHold seconds so the results are
+// readable, then quietly resets frags and ships and play continues.
 func (a *Arena) stepDM() {
 	a.tick++
 	a.world.Ships = a.world.Ships[:0]
+	frozen := a.matchOverCd > 0
 
 	for _, id := range a.order {
 		p := a.players[id]
+		if frozen {
+			a.world.Ships = append(a.world.Ships, p.Ship)
+			continue
+		}
 		if !p.Ship.Alive {
 			if p.respawnCd <= 0 {
 				p.respawnCd = dmRespawnDelay
@@ -331,8 +356,23 @@ func (a *Arena) stepDM() {
 		a.world.Ships = append(a.world.Ships, p.Ship)
 	}
 
-	evs := a.dmRams()
-	evs = append(evs, a.dmProjectiles()...)
+	var evs []Event
+	if frozen {
+		if a.matchOverCd -= tickDT; a.matchOverCd <= 0 {
+			a.matchOverCd = 0
+			a.restartMatch()
+			evs = append(evs, Event{Kind: "matchStart"})
+		}
+	} else {
+		evs = append(evs, a.dmRams()...)
+		evs = append(evs, a.dmProjectiles()...)
+
+		a.matchElapsed += tickDT
+		if winner, over := a.checkMatchOver(); over {
+			a.matchOverCd = a.k.DM["matchOverHold"]
+			evs = append(evs, Event{Kind: "matchOver", Winner: winner, Hold: a.matchOverCd})
+		}
+	}
 
 	if pe := EventsToProto(evs); pe != nil {
 		b := proto.Marshal(proto.EventBatch{Type: proto.TypeEvent, Tick: a.tick, Events: pe})
@@ -346,6 +386,7 @@ func (a *Arena) stepDM() {
 			p := a.players[id]
 			s := BuildSnapshot(a.world, a.tick, p.lastSeq, p.Ship, a.othersOf(p))
 			s.Board = board
+			s.TimeLeft = a.timeLeft()
 			p.send(proto.Marshal(s))
 		}
 	}
@@ -492,6 +533,60 @@ func (a *Arena) board() []proto.ScoreS {
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Frags > rows[j].Frags })
 	return rows
+}
+
+// timeLeft is the deathmatch countdown shown on the scoreboard; 0 when no
+// time limit is configured, so the client knows to hide the countdown.
+func (a *Arena) timeLeft() float64 {
+	if a.timeLimit <= 0 {
+		return 0
+	}
+	if left := a.timeLimit - a.matchElapsed; left > 0 {
+		return left
+	}
+	return 0
+}
+
+// checkMatchOver reports whether the configured frag/time limit has just
+// been reached, and who's leading ("" on a tie for the lead). Only called
+// while the match is live — stepDM skips it once frozen.
+func (a *Arena) checkMatchOver() (winner string, over bool) {
+	best, bestFrags, tie := "", -1, false
+	for _, id := range a.order {
+		f := a.players[id].frags
+		switch {
+		case f > bestFrags:
+			best, bestFrags, tie = id, f, false
+		case f == bestFrags:
+			tie = true
+		}
+	}
+	if tie {
+		best = ""
+	}
+
+	if a.fragLimit > 0 && bestFrags >= a.fragLimit {
+		return best, true
+	}
+	if a.timeLimit > 0 && a.matchElapsed >= a.timeLimit {
+		return best, true
+	}
+	return "", false
+}
+
+// restartMatch clears frags and puts every ship back at a fresh dm spawn —
+// called once matchOverCd runs out, so a session keeps going through as many
+// matches as its players want without anyone having to rejoin.
+func (a *Arena) restartMatch() {
+	a.matchElapsed = 0
+	for _, id := range a.order {
+		p := a.players[id]
+		p.frags = 0
+		p.respawnCd = 0
+		resetShip(p.Ship, a.k)
+		p.Ship.Pos = a.dmSpawnPos()
+		p.Ship.Invuln = a.k.Player.InvulnOnRespawn
+	}
 }
 
 // dmSpawnPos drops a respawning fighter onto a random point ~700 u out, so

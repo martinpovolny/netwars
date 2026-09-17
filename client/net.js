@@ -28,14 +28,14 @@ import K from '../shared/constants.js';
 
 const HELLO_TIMEOUT = 6000;
 
-export async function startNetwork({ session, serverId, mode, name }) {
+export async function startNetwork({ session, serverId, mode, name, fragLimit, timeLimit }) {
   const host = serverId || location.host;
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${scheme}//${host}/ws`;
 
   let conn;
   try {
-    conn = await connect(url, { session, mode, name });
+    conn = await connect(url, { session, mode, name, fragLimit, timeLimit });
   } catch (err) {
     console.warn(
       `[netwars] could not join ${url} (${err && err.message || err}). Starting single-player.`,
@@ -49,14 +49,17 @@ export async function startNetwork({ session, serverId, mode, name }) {
 
 // --- connection ---------------------------------------------------------
 
-function connect(url, { session, mode, name }) {
+function connect(url, { session, mode, name, fragLimit, timeLimit }) {
   return new Promise((resolve, reject) => {
     let ws;
     try { ws = new WebSocket(url); } catch (e) { reject(e); return; }
     const timer = setTimeout(() => { ws.close(); reject(new Error('welcome timed out')); }, HELLO_TIMEOUT);
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'hello', session: session || 'default', mode: mode || 'coop', name: name || '' }));
+      ws.send(JSON.stringify({
+        type: 'hello', session: session || 'default', mode: mode || 'coop', name: name || '',
+        fragLimit: fragLimit || 0, timeLimit: timeLimit || 0,
+      }));
     };
     ws.onerror = () => { clearTimeout(timer); reject(new Error('socket error')); };
     ws.onclose = () => { clearTimeout(timer); reject(new Error('closed before welcome')); };
@@ -118,6 +121,14 @@ function runOnline({ ws, welcome }, { mode, name }) {
   const orient = new OrientationInset();
   const hud = new HUD();
 
+  // deathmatch match-over overlay — only ever shown/hidden here, driven by
+  // the server's matchOver/matchStart events (frame loop just ticks the
+  // countdown text; the freeze itself is server-side, this is display only).
+  const matchoverEl = document.getElementById('matchover');
+  const matchoverTitle = document.getElementById('matchover-title');
+  const matchoverSub = document.getElementById('matchover-sub');
+  let matchOverUntil = 0; // performance.now() ms timestamp, 0 = not showing
+
   // ---- the mirrored world (fed by snapshots) -----------------------
   const world = {
     fleet: { list: [], level: welcome.snapshot.level || 1, goals: {} },   // goals: M2.6 (server sends per-class remaining)
@@ -128,7 +139,9 @@ function runOnline({ ws, welcome }, { mode, name }) {
     score: welcome.snapshot.score || 0,
     others: [],           // other players' ships (meshes)
     board: welcome.snapshot.board || [],   // deathmatch scoreboard
+    timeLeft: welcome.snapshot.tl || 0,    // deathmatch countdown, seconds; 0 = no time limit
   };
+  const dmFragLimit = welcome.fragLimit || 0; // 0 = no limit — fixed for the arena's lifetime
   const inputLog = [];   // { seq, ctrl, dt } — a sent input, kept until the server acks it
 
   enemies.attach(world.fleet);
@@ -319,6 +332,29 @@ function runOnline({ ws, welcome }, { mode, name }) {
         if (ev.flash) hud.flash(ev.flash, ev.hold || 2.5);
         if (ev.start) { player.reset(); inputLog.length = 0; }
         break;
+      case 'matchOver': {
+        // the arena is frozen server-side for ev.hold seconds; this just
+        // drives the overlay text + countdown for that same window.
+        const nameOf = (id) => { const r = (world.board || []).find((x) => x.id === id); return r ? r.n : id; };
+        matchOverUntil = performance.now() + ev.hold * 1000;
+        matchoverEl.classList.remove('win', 'lose');
+        if (!ev.wn) {
+          matchoverTitle.textContent = 'MATCH OVER — TIE';
+        } else if (ev.wn === welcome.playerId) {
+          matchoverTitle.textContent = 'MATCH OVER — YOU WIN';
+          matchoverEl.classList.add('win');
+        } else {
+          matchoverTitle.textContent = `MATCH OVER — ${nameOf(ev.wn)} WINS`;
+          matchoverEl.classList.add('lose');
+        }
+        matchoverEl.classList.add('show');
+        audio.boom();
+        break;
+      }
+      case 'matchStart':
+        matchOverUntil = 0;
+        matchoverEl.classList.remove('show');
+        break;
     }
   }
 
@@ -333,6 +369,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     world.fleet.level = s.level;
     world.fleet.goals = s.goals || {};
     if (s.board) world.board = s.board;
+    world.timeLeft = s.tl || 0; // deathmatch countdown, seconds; 0 = no time limit
     world.score = s.score;
     world.fsm.state = s.fsm;
 
@@ -564,9 +601,16 @@ function runOnline({ ws, welcome }, { mode, name }) {
       dm,
       online: true,
       board: world.board,
+      fragLimit: dmFragLimit,
+      timeLeft: world.timeLeft,
       roster,
       selfId: welcome.playerId,
     });
+
+    if (matchOverUntil > 0) {
+      const left = Math.max(0, Math.ceil((matchOverUntil - performance.now()) / 1000));
+      matchoverSub.textContent = `next match in ${left}s`;
+    }
   }
   requestAnimationFrame(frame);
 }

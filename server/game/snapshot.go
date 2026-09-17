@@ -91,6 +91,10 @@ func EventsToProto(evs []Event) []proto.EventS {
 			pe.Killer = e.Killer
 			pe.Victim = e.Victim
 		}
+		if e.Kind == "matchOver" {
+			pe.Winner = e.Winner
+			pe.Hold = e.Hold
+		}
 		out = append(out, pe)
 	}
 	return out
