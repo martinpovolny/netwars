@@ -61,7 +61,7 @@ export class Player {
   update(dt, input, weapons, enemies, audio) {
     // missiles are a limited resource — refilled only on respawn / new level
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
-    if (this.hitPulse > 0) this.hitPulse = Math.max(0, this.hitPulse - dt * 3.5);
+    if (this.hitPulse > 0) this.hitPulse = Math.max(0, this.hitPulse - dt * 2.5);
     if (!this.alive) return;
 
     // --- cursor + deployed intent marker ---

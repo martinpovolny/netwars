@@ -21,6 +21,7 @@ import { Environment } from './render/environment.js';
 import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
+import { ScreenShake } from './shake.js';
 import { ENEMY_TYPES } from './levels.js';
 import { makePlayerShip } from './ships.js';
 import { showFatalError } from './webgl.js';
@@ -120,6 +121,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
   const radar = new Radar();
   const orient = new OrientationInset();
   const hud = new HUD();
+  const shake = new ScreenShake();
 
   // deathmatch match-over overlay — only ever shown/hidden here, driven by
   // the server's matchOver/matchStart events (frame loop just ticks the
@@ -371,12 +373,17 @@ function runOnline({ ws, welcome }, { mode, name }) {
         explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : 0x3ad0ff);
         audio.pickup();
         break;
-      case 'ram': explosions.blast(pos, 0xffcc55); audio.boom(); if (ev.hurt) audio.hit(); hud.flash('COLLISION', 1.2); break;
+      // ram/playerHit are broadcast to every player in the arena with no
+      // victim id — "was it ME who got hit" is answered separately, from an
+      // actual hull drop in applySnapshot (see there for why). audio.boom()/
+      // the explosion FX below stay unconditional: a collision or impact is
+      // reasonable for anyone nearby to see/hear, "you got hurt" isn't.
+      case 'ram': explosions.blast(pos, 0xffcc55); audio.boom(); hud.flash('COLLISION', 1.2); break;
       case 'podStrikeKill': explosions.blast(pos, 0xff5ad0); audio.boom(); break;
       case 'enemyHit': explosions.hit(pos, ev.isMissile ? 0xffd23a : 0xbfe8ff); break;
       case 'enemyKill': explosions.blast(pos, 0xffcc55); audio.boom(); break;
       case 'missileBurst': explosions.blast(pos, 0xffd23a); break;
-      case 'playerHit': explosions.spark(pos); if (!ev.absorbed) audio.hit(); break;
+      case 'playerHit': explosions.spark(pos); break;
       case 'podHit': explosions.spark(pos); break;
       case 'podKill': explosions.blast(pos, 0xff5ad0); audio.boom(); hud.flash('POD DOWN', 1.0); break;
       case 'frag': {
@@ -436,6 +443,20 @@ function runOnline({ ws, welcome }, { mode, name }) {
     world.fsm.state = s.fsm;
 
     const sh = s.ship;
+    // A hull drop between two of MY OWN snapshots is the one unambiguous
+    // signal that I actually just took damage — the event stream
+    // ('playerHit'/'ram') is broadcast to every player in the arena with no
+    // victim id attached, so driving hit-feedback from it would flash/shake
+    // everyone's screen whenever anyone gets hit, not just the one who did
+    // (confirmed: that's exactly what the old `if (ev.hurt) audio.hit()` /
+    // `if (!ev.absorbed) audio.hit()` calls did). Skipped on the very first
+    // snapshot (no real "before" to compare against) and while already dead.
+    if (!first && player.alive && sh.hull < player.hull - 0.01) {
+      const drop = player.hull - sh.hull;
+      player.hitPulse = 1;
+      audio?.hit();
+      shake.kick(Math.min(1, 0.4 + 0.6 * (drop / (player.maxHull * 0.15))));
+    }
     player.hull = sh.hull;
     player.missiles = sh.msl;
     player.alive = sh.alive;
@@ -592,6 +613,12 @@ function runOnline({ ws, welcome }, { mode, name }) {
 
     interpRemote(dt);
     interpOthers();
+    shake.update(dt);
+    // net.js never calls Player.update() (MP prediction drives the ship via
+    // stepShip directly), so hitPulse — set to 1 in applySnapshot on a real
+    // hit — has nothing else decaying it back down; without this the red
+    // vignette would flash once and then stay stuck at full opacity.
+    if (player.hitPulse > 0) player.hitPulse = Math.max(0, player.hitPulse - dt * 2.5);
     enemies.update(dt);
     pods.update(dt);
     bonuses.update(dt);
@@ -621,6 +648,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       if (camErr.lengthSq() < 1e-6) camErr.set(0, 0, 0);
       camera.position.copy(player.position).add(camErr);
       camera.quaternion.copy(player.quaternion);
+      shake.apply(camera);
     } else {
       _lookAt.copy(world.pods.centroid);
       let nd = Infinity;
