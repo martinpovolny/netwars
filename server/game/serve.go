@@ -53,7 +53,7 @@ func HandleConn(parent context.Context, w http.ResponseWriter, r *http.Request, 
 		name = name[:16]
 	}
 
-	arena := s.getOrCreate(hello.Session, mode)
+	arena := s.getOrCreate(hello.Session, mode, hello.FragLimit, hello.TimeLimit)
 	p := &Player{
 		ID:   "p" + itoa(int(s.nextPID.Add(1))),
 		Name: name,

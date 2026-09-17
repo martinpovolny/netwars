@@ -40,6 +40,12 @@ type Hello struct {
 	Session string `json:"session"`
 	Mode    string `json:"mode"` // "coop" | "dm"
 	Name    string `json:"name,omitempty"`
+	// deathmatch match-end, set by whoever's hello creates the arena (a
+	// latecomer's values are ignored, same as Mode); 0 = no limit, and that's
+	// a real choice, not "unset" — the start-screen picker always sends an
+	// explicit value (defaulting to dm.fragLimitDefault in the UI itself).
+	FragLimit int     `json:"fragLimit,omitempty"`
+	TimeLimit float64 `json:"timeLimit,omitempty"`
 }
 
 // Input is one frame of ship control (intent already eased on the client) plus
@@ -63,6 +69,11 @@ type Input struct {
 	MslTarget int `json:"mt"`
 	// deathmatch: id of the other player's ship locked instead, "" = none.
 	MslTargetPlayer string `json:"mp,omitempty"`
+	// this client's own measured RTT to the server (ms), self-reported so
+	// other players can see it next to this player's name — ping/pong only
+	// round-trips this one connection, it never reaches anyone else on its
+	// own, so it has to ride along on Input instead. 0 = not yet measured.
+	Rtt float64 `json:"rt,omitempty"`
 }
 
 type Ping struct {
@@ -79,6 +90,11 @@ type Welcome struct {
 	Mode     string   `json:"mode"`
 	Tick     int      `json:"tick"`
 	Snapshot Snapshot `json:"snapshot"`
+	// deathmatch match-end, as the arena was actually created with — may
+	// differ from what this client's own hello asked for if it joined a
+	// session someone else already started (0 = no limit).
+	FragLimit int     `json:"fragLimit,omitempty"`
+	TimeLimit float64 `json:"timeLimit,omitempty"`
 }
 
 type Vec3 [3]float64
@@ -94,7 +110,8 @@ type ShipS struct {
 	MaxHull   float64 `json:"maxHull,omitempty"`
 	Missiles  int     `json:"msl"`
 	Alive     bool    `json:"alive"`
-	BoostFuel float64 `json:"bf"` // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
+	BoostFuel float64 `json:"bf"`           // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
+	Rtt       float64 `json:"rt,omitempty"` // others only — that player's own self-reported RTT to the server, ms
 }
 
 type EnemyS struct {
@@ -129,28 +146,30 @@ type ProjS struct {
 // Snapshot is the authoritative shared world for one client. Ship is that
 // client's own ship (reconcile target); Others are everyone else (interpolate).
 type Snapshot struct {
-	Type     string   `json:"type"`
-	Tick     int      `json:"tick"`
-	AckSeq   int      `json:"ackSeq"`
+	Type     string         `json:"type"`
+	Tick     int            `json:"tick"`
+	AckSeq   int            `json:"ackSeq"`
 	Level    int            `json:"level"`
 	Goals    map[string]int `json:"goals,omitempty"` // enemies still owed this level, per type
 	Score    int            `json:"score"`
 	FSMState string         `json:"fsm"`
-	Ship     ShipS    `json:"ship"`
-	Others   []ShipS  `json:"others"`
-	Enemies  []EnemyS `json:"enemies"`
-	Pods     []PodS   `json:"pods"`
-	Bonuses  []BonusS `json:"bonuses"`
-	Proj     []ProjS  `json:"proj"`
-	Board    []ScoreS `json:"board,omitempty"` // deathmatch scoreboard
+	Ship     ShipS          `json:"ship"`
+	Others   []ShipS        `json:"others"`
+	Enemies  []EnemyS       `json:"enemies"`
+	Pods     []PodS         `json:"pods"`
+	Bonuses  []BonusS       `json:"bonuses"`
+	Proj     []ProjS        `json:"proj"`
+	Board    []ScoreS       `json:"board,omitempty"` // deathmatch scoreboard
+	TimeLeft float64        `json:"tl,omitempty"`    // deathmatch, only when a time limit is set: seconds left in the match
 }
 
 // ScoreS is one row of the deathmatch scoreboard.
 type ScoreS struct {
-	ID    string `json:"id"`
-	Name  string `json:"n"`
-	Frags int    `json:"f"`
-	Alive bool   `json:"a"`
+	ID    string  `json:"id"`
+	Name  string  `json:"n"`
+	Frags int     `json:"f"`
+	Alive bool    `json:"a"`
+	Rtt   float64 `json:"rt,omitempty"` // that player's own self-reported RTT to the server, ms
 }
 
 type EventS struct {
@@ -168,6 +187,9 @@ type EventS struct {
 	// frag events (deathmatch): who killed whom.
 	Killer string `json:"kr,omitempty"`
 	Victim string `json:"vk,omitempty"`
+	// matchOver events (deathmatch): who has the most frags ("" on a tie);
+	// Hold (above) carries how long the results stay on screen.
+	Winner string `json:"wn,omitempty"`
 }
 
 type EventBatch struct {

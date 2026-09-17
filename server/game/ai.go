@@ -39,34 +39,35 @@ type eStats struct {
 // Enemy: the non-render half of the old client Enemy (shared/sim/enemies.js
 // makeEnemyState).
 type Enemy struct {
-	ID         int
-	Type       string
-	Stats      *eStats
-	Behavior   string
-	Position   Vec3
-	Quaternion Quat
-	Velocity   Vec3
-	HP         float64
-	Radius     float64
-	Dead       bool
-	Escaped    bool
-	Thrust     float64
-	Vmax       float64
-	FireCd     float64
-	StrafeSign int
-	Repick     float64
-	TargetPod  *Pod
-	Loot       *Pod
-	State      string
-	StateT     float64
-	HoldFor    float64
-	Charge     float64 // Guardian lance windup (seconds remaining)
-	Perch      Vec3
-	MovePos    Vec3
-	AimPos     Vec3
-	HaulDir    Vec3
-	HaulStart  Vec3
-	Flash      float64
+	ID          int
+	Type        string
+	Stats       *eStats
+	Behavior    string
+	Position    Vec3
+	Quaternion  Quat
+	Velocity    Vec3
+	HP          float64
+	Radius      float64
+	Dead        bool
+	Escaped     bool
+	Thrust      float64
+	Vmax        float64
+	FireCd      float64
+	PodStrikeCd float64 // brief invuln after a pod ram so one contact = one hit
+	StrafeSign  int
+	Repick      float64
+	TargetPod   *Pod
+	Loot        *Pod
+	State       string
+	StateT      float64
+	HoldFor     float64
+	Charge      float64 // Guardian lance windup (seconds remaining)
+	Perch       Vec3
+	MovePos     Vec3
+	AimPos      Vec3
+	HaulDir     Vec3
+	HaulStart   Vec3
+	Flash       float64
 }
 
 // GuidePos / GuideDead satisfy guideTarget (weapons.go) — a player missile

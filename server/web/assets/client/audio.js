@@ -110,7 +110,14 @@ export class Audio {
   laser()      { this._tone(900, 0.12, 'square', 0.035, 240); }
   enemyLaser() { this._tone(320, 0.14, 'sawtooth', 0.03, 120); }
   enemyLance() { this._tone(1400, 0.22, 'sawtooth', 0.05, 180); this._tone(700, 0.22, 'square', 0.03, 90); }
-  hit()        { this._tone(150, 0.18, 'square', 0.06, 60); }
+  // A live instrumented session confirmed this fires correctly on every
+  // real hit — the old version (a lone 150->60Hz tone at gain 0.06) just
+  // wasn't loud or high enough to reliably cut through: quieter than boom()
+  // (0.16) or the background music (0.35), and low frequencies like 150-60Hz
+  // are exactly the range cheap laptop/phone speakers reproduce worst. A
+  // short noise crack plus a punchier, higher-pitched tone reads as a real
+  // impact instead of a barely-there rumble.
+  hit()        { this._noise(0.06, 0.1); this._tone(220, 0.16, 'square', 0.11, 90); }
   boom()       { this._noise(0.45, 0.16); }
   pickup()     { this._tone(520, 0.09, 'sine', 0.05, 780); setTimeout(() => this._tone(880, 0.12, 'sine', 0.05, 1180), 80); }
 }

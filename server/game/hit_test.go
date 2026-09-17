@@ -72,7 +72,7 @@ func TestArenaInvulnDecaysAndHitsLand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-hit", "coop", "hit-seed")
+	a := newArena(k, "unit-hit", "coop", "hit-seed", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
 	a.world.StartWorldLevel(1, int(k.Pods["perLevel"]))
 	p := joinBare(a)
 
@@ -105,7 +105,7 @@ func TestArenaDeathmatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-dm", "dm", "dm-seed")
+	a := newArena(k, "unit-dm", "dm", "dm-seed", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
 	if !a.dm {
 		t.Fatal("arena not in dm mode")
 	}
@@ -170,7 +170,7 @@ func TestArenaDeathmatchGunHitsADeadCenterTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-dm-gun", "dm", "dm-gun")
+	a := newArena(k, "unit-dm-gun", "dm", "dm-gun", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
 	p1 := joinBare(a)
 	p2 := joinBare(a)
 	p1.Ship.Pos = Vec3{}
@@ -198,7 +198,7 @@ func TestArenaDeathmatchMissileLocksOntoPlayer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-dm-msl", "dm", "dm-msl")
+	a := newArena(k, "unit-dm-msl", "dm", "dm-msl", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
 	p1 := joinBare(a)
 	p2 := joinBare(a)
 	p1.Ship.Pos = Vec3{}
@@ -230,9 +230,9 @@ func TestArenaDeathmatchMissileShotDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-dm-msl-shotdown", "dm", "dm-shotdown")
-	p1 := joinBare(a) // fires the missile
-	p2 := joinBare(a) // shoots it down; also the missile's intended victim
+	a := newArena(k, "unit-dm-msl-shotdown", "dm", "dm-shotdown", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
+	p1 := joinBare(a)                                                   // fires the missile
+	p2 := joinBare(a)                                                   // shoots it down; also the missile's intended victim
 	p1.Ship.Pos = Vec3{}
 	p2.Ship.Pos = Vec3{Z: -2000} // well clear of the intercept point
 	p2.Ship.Invuln = 0
@@ -276,7 +276,7 @@ func TestArenaDeathmatchMissileNotShotDownBySameOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-dm-msl-friendly", "dm", "dm-friendly")
+	a := newArena(k, "unit-dm-msl-friendly", "dm", "dm-friendly", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
 	p1 := joinBare(a)
 	p1.Ship.Pos = Vec3{}
 
@@ -300,7 +300,7 @@ func TestArenaDeathmatchRam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-dm-ram", "dm", "dm-ram")
+	a := newArena(k, "unit-dm-ram", "dm", "dm-ram", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
 	p1 := joinBare(a)
 	p2 := joinBare(a)
 	p1.Ship.Pos = Vec3{}
@@ -337,7 +337,7 @@ func TestArenaIndependentRespawn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-respawn", "coop", "rs-seed")
+	a := newArena(k, "unit-respawn", "coop", "rs-seed", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
 	a.world.StartWorldLevel(1, int(k.Pods["perLevel"]))
 	p1 := joinBare(a)
 	p2 := joinBare(a)
@@ -417,7 +417,7 @@ func TestArenaSecondPlayerIsVulnerable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newArena(k, "unit-hit2", "coop", "hit-seed2")
+	a := newArena(k, "unit-hit2", "coop", "hit-seed2", 0, 0) // 0,0 = no frag/time limit (unit test doesn't exercise match-end)
 	a.world.StartWorldLevel(1, int(k.Pods["perLevel"]))
 	p1 := joinBare(a)
 	p2 := joinBare(a)

@@ -22,11 +22,14 @@
   body { font-family: "DejaVu Sans Mono", "Courier New", monospace; color: var(--amber); }
   #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
-  /* red damage vignette — opacity driven from JS on each hit */
+  /* red damage vignette — opacity driven from JS every frame (player.hitPulse
+     snaps to 1 on a hit, then decays). No CSS transition here on purpose: JS
+     already updates this every rendered frame, and a transition on top of
+     that was fighting the snap, turning what should read as a sudden flash
+     into a softened blur. */
   #hit-flash {
     position: fixed; inset: 0; pointer-events: none; opacity: 0;
-    background: radial-gradient(ellipse at center, transparent 34%, rgba(255,18,18,0.9) 100%);
-    transition: opacity 90ms ease-out;
+    background: radial-gradient(ellipse at center, transparent 28%, rgba(255,18,18,0.95) 100%);
   }
 
   #hud {
@@ -145,10 +148,11 @@
     color: var(--green); font-size: 13px;
   }
   #board .btitle {
-    text-align: center; letter-spacing: 3px; font-size: 11px;
+    text-align: center; letter-spacing: 2px; font-size: 11px;
     color: var(--green); opacity: 0.7; border-bottom: 1px solid rgba(53,224,74,0.35);
     padding-bottom: 3px; margin-bottom: 4px;
   }
+  #board .btitle .limit { letter-spacing: 0.5px; font-variant-numeric: tabular-nums; }
   #board .brow { display: flex; justify-content: space-between; gap: 28px; line-height: 1.65; white-space: nowrap; }
   #board .brow.me span:first-child { color: #fff; }
   #board .brow.me .frag { color: var(--amber); }
@@ -156,6 +160,11 @@
   #board .brow span:last-child { font-variant-numeric: tabular-nums; }
   #board .hp.warn { color: #ffb020; }
   #board .hp.crit { color: var(--amber); }
+  #board .rt {
+    margin-left: 6px; font-size: 10px; opacity: 0.65; font-variant-numeric: tabular-nums;
+  }
+  #board .rt.warn { color: #ffb020; opacity: 0.9; }
+  #board .rt.crit { color: var(--amber); opacity: 0.95; }
 
   /* centre message */
   #msg {
@@ -192,6 +201,31 @@
   #paused.show { display: block; }
   #paused .sub { display: block; margin-top: 10px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
   #dead .key { display: block; margin-top: 4px; font-size: 14px; color: var(--green); letter-spacing: 1px; }
+
+  /* deathmatch: a frag/time limit ends the match — frozen results + a
+     countdown to the next one. Styled like #paused but bigger, and colored
+     by outcome (win/lose/tie) rather than always amber. */
+  #matchover {
+    /* left+right (not left:50%+translateX) so the browser's shrink-to-fit
+       width computation sees the full viewport as available and sizes to
+       the text's real max-content width instead of clamping at half the
+       viewport — the classic abspos-centering trap. */
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    margin: 0 auto; width: max-content; max-width: 90vw;
+    display: none; text-align: center; letter-spacing: 4px; padding: 22px 56px;
+    background: rgba(4, 2, 10, 0.72); border: 1px solid #fff;
+    box-shadow: 0 0 60px rgba(255, 255, 255, 0.08);
+  }
+  #matchover.show { display: block; }
+  /* default (no win/lose class) = a tie: neither --green (win) nor --amber
+     (lose) reads right here, since both carry a strong win/lose connotation
+     everywhere else in this HUD — plain white is the actual neutral. */
+  #matchover .title { font-size: 34px; color: #fff; }
+  #matchover.win .title { color: var(--green); text-shadow: 0 0 18px rgba(53, 224, 74, 0.55); }
+  #matchover.win { border-color: var(--green); box-shadow: 0 0 60px rgba(53, 224, 74, 0.28); }
+  #matchover.lose .title { color: var(--amber); text-shadow: 0 0 18px rgba(255, 43, 43, 0.5); }
+  #matchover.lose { border-color: var(--amber); box-shadow: 0 0 60px rgba(255, 43, 43, 0.22); }
+  #matchover .sub { display: block; margin-top: 12px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
 
   /* inset labels (viewports themselves are drawn by WebGL) */
   #axis-label  { position: absolute; left: 20px;  top: 156px; color: var(--green); font-size: 12px; white-space: nowrap; }
@@ -318,6 +352,25 @@
         <option value="ctf" disabled>2-Team Capture the Flag (soon)</option>
       </select>
       <p class="hint">Anyone using the same session name joins the same match.</p>
+
+      <fieldset id="dm-fields" class="hidden">
+        <legend>MATCH LIMITS</legend>
+        <label class="field" for="f-fraglimit">Frag limit</label>
+        <select id="f-fraglimit">
+          <option value="10">First to 10</option>
+          <option value="20" selected>First to 20</option>
+          <option value="30">First to 30</option>
+          <option value="0">No limit</option>
+        </select>
+        <label class="field" for="f-timelimit">Time limit</label>
+        <select id="f-timelimit">
+          <option value="0" selected>No limit</option>
+          <option value="300">5 minutes</option>
+          <option value="600">10 minutes</option>
+          <option value="900">15 minutes</option>
+        </select>
+        <p class="hint">Whichever hits first ends the match — set by whoever starts the session.</p>
+      </fieldset>
     </fieldset>
 
     <button id="f-launch" type="button">LAUNCH</button>
@@ -386,6 +439,10 @@
   </div>
   <div id="paused">Paused
     <span class="sub">press P or click Pause to resume</span>
+  </div>
+  <div id="matchover">
+    <div class="title" id="matchover-title">MATCH OVER</div>
+    <span class="sub" id="matchover-sub"></span>
   </div>
 
   <div id="axis-label">Orientation</div>

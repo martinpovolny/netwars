@@ -12,6 +12,7 @@ import { stepEnemy } from './ai.js';
 
 const FWD = new Vector3(0, 0, -1);
 const _leash = new Vector3();
+const _clear = new Vector3();
 
 // The non-render half of the old `Enemy` class.
 export function makeEnemyState(typeKey, ENEMY_TYPES, KE, rng = Math.random) {
@@ -35,6 +36,9 @@ export function makeEnemyState(typeKey, ENEMY_TYPES, KE, rng = Math.random) {
     fireCd: t.fireGap[0] + rng() * (t.fireGap[1] - t.fireGap[0]),
     strafeSign: rng() < 0.5 ? -1 : 1,
     repick: 0,
+    podStrikeCd: 0,   // brief invuln after a pod ram so one contact = one hit,
+                       // not a whole tick-rate's worth of damage while it's
+                       // still overlapping and hasn't been knocked clear yet
     _targetPod: null,
     _loot: null,
 
@@ -71,7 +75,7 @@ export function fleetPendingRemaining(fleet) { return sum(fleet.pending); }
 export function fleetGoalsRemaining(fleet) { return sum(fleet.goals); }
 export function fleetCleared(fleet) { return fleetGoalsRemaining(fleet) === 0 && fleet.list.length === 0; }
 
-function spawnEnemy(fleet, anchor, playerPos, ENEMY_TYPES, KE, rng) {
+function spawnEnemy(fleet, anchor, playerPos, ENEMY_TYPES, KE, rng, pods) {
   const keys = Object.keys(fleet.pending).filter((k) => fleet.pending[k] > 0);
   if (!keys.length) return null;
   const k = keys[Math.floor(rng() * keys.length)];
@@ -80,6 +84,30 @@ function spawnEnemy(fleet, anchor, playerPos, ENEMY_TYPES, KE, rng) {
   e.position
     .copy(randomDir(rng, new Vector3()).multiplyScalar(KE.spawnMin + rng() * KE.spawnRange))
     .add(anchor);
+  // The draw above only guarantees distance from the pod CENTROID, not from
+  // any individual pod — once several pods are destroyed, the centroid can
+  // sit right between a couple of scattered survivors, each still up to
+  // pods.spawnMin+spawnRange from it, so a "far from the fight" spawn could
+  // still land within a few hundred units of one specific pod. Push clear
+  // of any pod inside podClearance; a couple of relaxation passes since
+  // pushing away from one pod can walk into another. Pure vector math on an
+  // already-drawn position — no extra rng() calls, so it can't perturb the
+  // deterministic spawn sequence golden-vector parity depends on.
+  if (pods && KE.podClearance) {
+    for (let pass = 0; pass < 3; pass++) {
+      let moved = false;
+      for (const p of pods) {
+        if (p.dead) continue;
+        const d = e.position.distanceTo(p.position);
+        if (d >= KE.podClearance) continue;
+        if (d > 1e-6) _clear.copy(e.position).sub(p.position).multiplyScalar(1 / d);
+        else _clear.copy(FWD); // degenerate: landed exactly on the pod — push along a fixed axis
+        e.position.copy(p.position).addScaledVector(_clear, KE.podClearance);
+        moved = true;
+      }
+      if (!moved) break;
+    }
+  }
   e.quaternion.setFromUnitVectors(FWD, playerPos.clone().sub(e.position).normalize());
   fleet.list.push(e);
   return e;
@@ -118,7 +146,7 @@ export function stepFleet(fleet, ctx, dt, KE) {
 
   const anchor = ctx.pods.list.length ? ctx.pods.centroid : player.position;
   while (fleet.list.length < KE.maxAlive && fleetPendingRemaining(fleet) > 0) {
-    if (!spawnEnemy(fleet, anchor, player.position, ctx.ENEMY_TYPES, KE, rng)) break;
+    if (!spawnEnemy(fleet, anchor, player.position, ctx.ENEMY_TYPES, KE, rng, ctx.pods.list)) break;
   }
 
   return events;
@@ -147,20 +175,29 @@ export function checkRam(fleet, player, KE) {
 // the enemy is shoved off. Only a lethal bump surfaces an event (matching the
 // old checkPodStrikes, which drew FX on kill only). Returns events[]
 // ({ kind:'podStrikeKill', pos, pod }).
-export function checkPodStrikes(fleet, pods, KE) {
+//
+// podStrikeCd debounces this per enemy: the knockback takes a tick or two to
+// actually carry the enemy clear of the pod's radius, and without a cooldown
+// every one of those overlapping ticks landed a fresh podStrikeDmg — so a
+// single ram could burn through a pod's whole HP before it visibly separated,
+// reading as "one hit" instead of the two the numbers imply.
+export function checkPodStrikes(fleet, pods, KE, dt) {
   const events = [];
   for (const e of fleet.list) {
-    if (e.dead || e.behavior === 'thief') continue;
+    if (e.podStrikeCd > 0) e.podStrikeCd -= dt;
+    if (e.dead || e.behavior === 'thief' || e.podStrikeCd > 0) continue;
     for (const p of pods.list) {
       if (p.dead) continue;
       if (e.position.distanceToSquared(p.position) < (e.radius + p.radius) ** 2) {
         p.hp -= KE.podStrikeDmg;
+        e.podStrikeCd = KE.podStrikeCd;
         if (p.hp <= 0) {
           p.dead = true;
           events.push({ kind: 'podStrikeKill', pos: p.position.clone(), pod: p });
         }
         const away = e.position.clone().sub(p.position).normalize();
         e.velocity.addScaledVector(away, KE.podStrikeKnockback);
+        break;
       }
     }
   }

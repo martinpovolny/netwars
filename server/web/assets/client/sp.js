@@ -11,6 +11,7 @@ import { Environment } from './render/environment.js';
 import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
+import { ScreenShake } from './shake.js';
 import { PODS_PER_LEVEL, ENEMY_TYPES, goalsForLevel } from './levels.js';
 import K from '../shared/constants.js';
 import { makeWorld, startWorldLevel, stepWorld } from '../shared/sim/world.js';
@@ -56,6 +57,7 @@ const environment = new Environment(scene);
 const radar = new Radar();
 const orient = new OrientationInset();
 const hud = new HUD();
+const shake = new ScreenShake();
 
 // the shared, authoritative world — the same code the Go server runs. SP owns
 // the ship locally (player.update / stepShip) and hands the rest to stepWorld.
@@ -139,7 +141,7 @@ function handleWorldEvent(ev) {
     case 'ram':
       explosions.blast(ev.pos, 0xffcc55);
       audio.boom();
-      if (ev.hurt) audio.hit();
+      if (ev.hurt) { audio.hit(); shake.kick(1); }
       hud.flash('COLLISION', 1.2);
       break;
     case 'podStrikeKill':
@@ -149,7 +151,7 @@ function handleWorldEvent(ev) {
     case 'enemyHit': explosions.hit(ev.pos, ev.isMissile ? 0xffd23a : 0xbfe8ff); break;
     case 'enemyKill': explosions.blast(ev.pos, ev.accent); audio?.boom(); break;
     case 'missileBurst': explosions.blast(ev.pos, 0xffd23a); break;
-    case 'playerHit': explosions.spark(ev.pos); if (!ev.absorbed) audio?.hit(); break;
+    case 'playerHit': explosions.spark(ev.pos); if (!ev.absorbed) { audio?.hit(); shake.kick(0.5); } break;
     case 'podHit': explosions.spark(ev.pos); break;
     case 'podKill': explosions.blast(ev.pos, 0xff5ad0); audio?.boom(); hud.flash('POD DOWN', 1.0); break;
     // 'level' is handled by the frame loop (after the render pass) so a level
@@ -223,12 +225,15 @@ function frame(now) {
   bonuses.update(simDt);
   weapons.update(simDt);
   explosions.update(simDt);
+  shake.update(simDt);
   const pr = world.projectiles;
   const radarMissiles = [];
   for (let mi = 0; mi < pr.max; mi++) {
     if (pr.ttl[mi] > 0 && pr.kind[mi] === 'missile') radarMissiles.push({ position: pr.pos[mi], mine: true });
   }
-  radar.update(player, enemies, pods, bonuses, null, radarMissiles);
+  radar.update(player, enemies, pods, bonuses, null, radarMissiles, simDt);
+  if (radar.autoZoomStarted) hud.flash('SCANNER AUTO-RANGING…', 1.2);
+  else if (radar.autoZoomMaxedOut) hud.flash('NO CONTACTS IN RANGE', 1.6);
   orient.update(player);
 
   // player just died -> mark the moment, hold the spectator camera here
@@ -251,6 +256,7 @@ function frame(now) {
   if (player.alive) {
     camera.position.copy(player.position);
     camera.quaternion.copy(player.quaternion);
+    shake.apply(camera);
   } else {
     _lookAt.copy(pods.centroid);
     let nd = Infinity;

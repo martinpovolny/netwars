@@ -21,6 +21,7 @@ import { Environment } from './render/environment.js';
 import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
+import { ScreenShake } from './shake.js';
 import { ENEMY_TYPES } from './levels.js';
 import { makePlayerShip } from './ships.js';
 import { showFatalError } from './webgl.js';
@@ -28,14 +29,14 @@ import K from '../shared/constants.js';
 
 const HELLO_TIMEOUT = 6000;
 
-export async function startNetwork({ session, serverId, mode, name }) {
+export async function startNetwork({ session, serverId, mode, name, fragLimit, timeLimit }) {
   const host = serverId || location.host;
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${scheme}//${host}/ws`;
 
   let conn;
   try {
-    conn = await connect(url, { session, mode, name });
+    conn = await connect(url, { session, mode, name, fragLimit, timeLimit });
   } catch (err) {
     console.warn(
       `[netwars] could not join ${url} (${err && err.message || err}). Starting single-player.`,
@@ -49,14 +50,17 @@ export async function startNetwork({ session, serverId, mode, name }) {
 
 // --- connection ---------------------------------------------------------
 
-function connect(url, { session, mode, name }) {
+function connect(url, { session, mode, name, fragLimit, timeLimit }) {
   return new Promise((resolve, reject) => {
     let ws;
     try { ws = new WebSocket(url); } catch (e) { reject(e); return; }
     const timer = setTimeout(() => { ws.close(); reject(new Error('welcome timed out')); }, HELLO_TIMEOUT);
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'hello', session: session || 'default', mode: mode || 'coop', name: name || '' }));
+      ws.send(JSON.stringify({
+        type: 'hello', session: session || 'default', mode: mode || 'coop', name: name || '',
+        fragLimit: fragLimit || 0, timeLimit: timeLimit || 0,
+      }));
     };
     ws.onerror = () => { clearTimeout(timer); reject(new Error('socket error')); };
     ws.onclose = () => { clearTimeout(timer); reject(new Error('closed before welcome')); };
@@ -117,6 +121,15 @@ function runOnline({ ws, welcome }, { mode, name }) {
   const radar = new Radar();
   const orient = new OrientationInset();
   const hud = new HUD();
+  const shake = new ScreenShake();
+
+  // deathmatch match-over overlay — only ever shown/hidden here, driven by
+  // the server's matchOver/matchStart events (frame loop just ticks the
+  // countdown text; the freeze itself is server-side, this is display only).
+  const matchoverEl = document.getElementById('matchover');
+  const matchoverTitle = document.getElementById('matchover-title');
+  const matchoverSub = document.getElementById('matchover-sub');
+  let matchOverUntil = 0; // performance.now() ms timestamp, 0 = not showing
 
   // ---- the mirrored world (fed by snapshots) -----------------------
   const world = {
@@ -128,7 +141,9 @@ function runOnline({ ws, welcome }, { mode, name }) {
     score: welcome.snapshot.score || 0,
     others: [],           // other players' ships (meshes)
     board: welcome.snapshot.board || [],   // deathmatch scoreboard
+    timeLeft: welcome.snapshot.tl || 0,    // deathmatch countdown, seconds; 0 = no time limit
   };
+  const dmFragLimit = welcome.fragLimit || 0; // 0 = no limit — fixed for the arena's lifetime
   const inputLog = [];   // { seq, ctrl, dt } — a sent input, kept until the server acks it
 
   enemies.attach(world.fleet);
@@ -141,7 +156,20 @@ function runOnline({ ws, welcome }, { mode, name }) {
   // NOT green — that's you): amber, then teal / pink / violet for a crowd.
   const OTHER_COLORS = [0xffb020, 0x35e0d0, 0xff5ad0, 0x9b6bff];
   const otherMeshes = [];
+
+  // Remote ships render from a small timestamped sample buffer, not a
+  // single "latest known" target eased toward every frame — see
+  // interpOthers() for why: a fixed-time-constant ease assumes roughly
+  // regular ~33ms snapshot delivery, and a laggier/jitterier player's
+  // packets don't arrive that way, which read as visible shaking.
+  const OTHER_BUF_MAX = 12; // ~400ms of history at 30Hz — comfortably covers RENDER_DELAY below + jitter
+  function pushOtherSample(rec, t, p, q) {
+    rec.buf.push({ t, p: [p[0], p[1], p[2]], q: [q[0], q[1], q[2], q[3]] });
+    while (rec.buf.length > OTHER_BUF_MAX) rec.buf.shift();
+  }
+
   function syncOthers(list) {
+    const now = performance.now();
     for (let i = 0; i < list.length; i++) {
       const color = OTHER_COLORS[i % OTHER_COLORS.length];
       const o = list[i];
@@ -153,23 +181,23 @@ function runOnline({ ws, welcome }, { mode, name }) {
         scene.add(m); otherMeshes[i] = m;
       }
       if (!world.others[i]) {
-        world.others[i] = {
-          position: new THREE.Vector3(o.p[0], o.p[1], o.p[2]),
-          tpos: new THREE.Vector3(o.p[0], o.p[1], o.p[2]),
-          tquat: new THREE.Quaternion(o.q[0], o.q[1], o.q[2], o.q[3]),
-          alive: true, color,
-        };
+        world.others[i] = { position: new THREE.Vector3(o.p[0], o.p[1], o.p[2]), buf: [], alive: true, color };
       }
+      const rec = world.others[i];
+      // a slot that used to belong to a different player (join/leave
+      // reshuffled indices) must not interpolate from their old position
+      // toward this one — start that slot's buffer over.
+      if (fresh || rec.id !== o.id) rec.buf.length = 0;
+      pushOtherSample(rec, now, o.p, o.q);
       const m = otherMeshes[i];
       m.visible = o.alive;
-      world.others[i].tpos.set(o.p[0], o.p[1], o.p[2]);
-      world.others[i].tquat.set(o.q[0], o.q[1], o.q[2], o.q[3]);
-      world.others[i].alive = o.alive;
-      world.others[i].color = color;
-      world.others[i].id = o.id;
-      world.others[i].name = o.n || o.id;
-      world.others[i].hull = o.hull;
-      world.others[i].maxHull = o.maxHull || K.player.maxHull;
+      rec.alive = o.alive;
+      rec.color = color;
+      rec.id = o.id;
+      rec.name = o.n || o.id;
+      rec.hull = o.hull;
+      rec.maxHull = o.maxHull || K.player.maxHull;
+      rec.rtt = o.rt || 0; // that player's own measured RTT to the server, ms (0 = not yet known)
     }
     for (let i = list.length; i < otherMeshes.length; i++) scene.remove(otherMeshes[i]);
     otherMeshes.length = list.length;
@@ -180,6 +208,51 @@ function runOnline({ ws, welcome }, { mode, name }) {
     if (players !== world._players) {
       world._players = players;
       hud.flash(players > 1 ? `${players} PLAYERS IN ARENA` : 'WAITING FOR PLAYERS…', 2.2);
+    }
+  }
+
+  // buffered render-delay interpolation for other players' ships: render
+  // "now minus RENDER_DELAY" by finding the two buffered samples that
+  // straddle that instant and lerping/slerping between them. Unlike easing
+  // toward a single always-moving target, this never fully converges and
+  // sits still during a gap only to lurch forward when the next snapshot
+  // finally lands — it always has two *real* points to interpolate between,
+  // so it degrades gracefully (a brief hold, not a stutter) regardless of
+  // how irregular a given player's packet delivery is.
+  const RENDER_DELAY = 120; // ms — enough buffer to absorb normal jitter, little enough lag to still track
+  const _op = new THREE.Vector3();
+  const _oq0 = new THREE.Quaternion();
+  const _oq1 = new THREE.Quaternion();
+  function interpOthers() {
+    const renderT = performance.now() - RENDER_DELAY;
+    for (let i = 0; i < otherMeshes.length; i++) {
+      const o = world.others[i], m = otherMeshes[i];
+      const buf = o && o.buf;
+      if (!o || !m || !buf || buf.length === 0) continue;
+      let s0 = buf[0], s1 = buf[buf.length - 1];
+      if (renderT <= s0.t) {
+        s1 = s0;
+      } else if (renderT >= s1.t) {
+        s0 = s1; // ran past the newest sample (a lag spike) — hold there; the
+                 // next arriving sample resolves it smoothly, not with a snap
+      } else {
+        for (let k = 0; k < buf.length - 1; k++) {
+          if (buf[k].t <= renderT && renderT <= buf[k + 1].t) { s0 = buf[k]; s1 = buf[k + 1]; break; }
+        }
+      }
+      const span = s1.t - s0.t;
+      const a = span > 0 ? (renderT - s0.t) / span : 1;
+      _op.set(
+        s0.p[0] + (s1.p[0] - s0.p[0]) * a,
+        s0.p[1] + (s1.p[1] - s0.p[1]) * a,
+        s0.p[2] + (s1.p[2] - s0.p[2]) * a,
+      );
+      _oq0.set(s0.q[0], s0.q[1], s0.q[2], s0.q[3]);
+      _oq1.set(s1.q[0], s1.q[1], s1.q[2], s1.q[3]);
+      _oq0.slerp(_oq1, a);
+      m.position.copy(_op);
+      m.quaternion.copy(_oq0);
+      o.position.copy(_op);
     }
   }
 
@@ -284,6 +357,10 @@ function runOnline({ ws, welcome }, { mode, name }) {
       gun: input.has('Space') || input.mouseFire,
       msl: input.has('KeyF') || input.mouseRight,
       mt, mp,
+      // self-reported RTT so other players can see it next to our name —
+      // ping/pong only round-trips this client<->server, it never reaches
+      // anyone else on its own, so it has to be piggybacked here.
+      rt: rtt,
     }));
   }
 
@@ -296,12 +373,17 @@ function runOnline({ ws, welcome }, { mode, name }) {
         explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : 0x3ad0ff);
         audio.pickup();
         break;
-      case 'ram': explosions.blast(pos, 0xffcc55); audio.boom(); if (ev.hurt) audio.hit(); hud.flash('COLLISION', 1.2); break;
+      // ram/playerHit are broadcast to every player in the arena with no
+      // victim id — "was it ME who got hit" is answered separately, from an
+      // actual hull drop in applySnapshot (see there for why). audio.boom()/
+      // the explosion FX below stay unconditional: a collision or impact is
+      // reasonable for anyone nearby to see/hear, "you got hurt" isn't.
+      case 'ram': explosions.blast(pos, 0xffcc55); audio.boom(); hud.flash('COLLISION', 1.2); break;
       case 'podStrikeKill': explosions.blast(pos, 0xff5ad0); audio.boom(); break;
       case 'enemyHit': explosions.hit(pos, ev.isMissile ? 0xffd23a : 0xbfe8ff); break;
       case 'enemyKill': explosions.blast(pos, 0xffcc55); audio.boom(); break;
       case 'missileBurst': explosions.blast(pos, 0xffd23a); break;
-      case 'playerHit': explosions.spark(pos); if (!ev.absorbed) audio.hit(); break;
+      case 'playerHit': explosions.spark(pos); break;
       case 'podHit': explosions.spark(pos); break;
       case 'podKill': explosions.blast(pos, 0xff5ad0); audio.boom(); hud.flash('POD DOWN', 1.0); break;
       case 'frag': {
@@ -319,6 +401,29 @@ function runOnline({ ws, welcome }, { mode, name }) {
         if (ev.flash) hud.flash(ev.flash, ev.hold || 2.5);
         if (ev.start) { player.reset(); inputLog.length = 0; }
         break;
+      case 'matchOver': {
+        // the arena is frozen server-side for ev.hold seconds; this just
+        // drives the overlay text + countdown for that same window.
+        const nameOf = (id) => { const r = (world.board || []).find((x) => x.id === id); return r ? r.n : id; };
+        matchOverUntil = performance.now() + ev.hold * 1000;
+        matchoverEl.classList.remove('win', 'lose');
+        if (!ev.wn) {
+          matchoverTitle.textContent = 'MATCH OVER — TIE';
+        } else if (ev.wn === welcome.playerId) {
+          matchoverTitle.textContent = 'MATCH OVER — YOU WIN';
+          matchoverEl.classList.add('win');
+        } else {
+          matchoverTitle.textContent = `MATCH OVER — ${nameOf(ev.wn)} WINS`;
+          matchoverEl.classList.add('lose');
+        }
+        matchoverEl.classList.add('show');
+        audio.boom();
+        break;
+      }
+      case 'matchStart':
+        matchOverUntil = 0;
+        matchoverEl.classList.remove('show');
+        break;
     }
   }
 
@@ -333,10 +438,25 @@ function runOnline({ ws, welcome }, { mode, name }) {
     world.fleet.level = s.level;
     world.fleet.goals = s.goals || {};
     if (s.board) world.board = s.board;
+    world.timeLeft = s.tl || 0; // deathmatch countdown, seconds; 0 = no time limit
     world.score = s.score;
     world.fsm.state = s.fsm;
 
     const sh = s.ship;
+    // A hull drop between two of MY OWN snapshots is the one unambiguous
+    // signal that I actually just took damage — the event stream
+    // ('playerHit'/'ram') is broadcast to every player in the arena with no
+    // victim id attached, so driving hit-feedback from it would flash/shake
+    // everyone's screen whenever anyone gets hit, not just the one who did
+    // (confirmed: that's exactly what the old `if (ev.hurt) audio.hit()` /
+    // `if (!ev.absorbed) audio.hit()` calls did). Skipped on the very first
+    // snapshot (no real "before" to compare against) and while already dead.
+    if (!first && player.alive && sh.hull < player.hull - 0.01) {
+      const drop = player.hull - sh.hull;
+      player.hitPulse = 1;
+      audio?.hit();
+      shake.kick(Math.min(1, 0.4 + 0.6 * (drop / (player.maxHull * 0.15))));
+    }
     player.hull = sh.hull;
     player.missiles = sh.msl;
     player.alive = sh.alive;
@@ -445,9 +565,12 @@ function runOnline({ ws, welcome }, { mode, name }) {
     }
   }
 
-  // ease every remote entity's render pose toward its latest server pose so
-  // the ~30 Hz snapshot cadence doesn't read as a vibration. ~60 ms time
+  // ease AI/pod/bonus render pose toward its latest server pose so the
+  // ~30 Hz snapshot cadence doesn't read as a vibration. ~60 ms time
   // constant — enough to smooth the steps, little enough lag to still aim.
+  // Other players' ships use interpOthers() instead (buffered render-delay
+  // interpolation) — see its comment for why a fixed-time-constant ease
+  // isn't enough once a player's own packet delivery is laggy or jittery.
   function interpRemote(dt) {
     const a = 1 - Math.exp(-dt / 0.06);
     for (const e of world.fleet.list) {
@@ -456,12 +579,6 @@ function runOnline({ ws, welcome }, { mode, name }) {
     }
     for (const p of world.pods.list) if (p.tpos) p.position.lerp(p.tpos, a);
     for (const b of world.bonuses.list) if (b.tpos) b.position.lerp(b.tpos, a);
-    for (let i = 0; i < otherMeshes.length; i++) {
-      const o = world.others[i], m = otherMeshes[i];
-      if (!o || !m) continue;
-      if (o.tpos) { m.position.lerp(o.tpos, a); o.position.copy(m.position); }
-      if (o.tquat) m.quaternion.slerp(o.tquat, a);
-    }
   }
 
   // ---- frame loop ------------------------------------------
@@ -495,6 +612,13 @@ function runOnline({ ws, welcome }, { mode, name }) {
     for (let i = 0; i < pr.max; i++) pr.age[i] = pr.ttl[i] > 0 ? pr.age[i] + dt : 0;
 
     interpRemote(dt);
+    interpOthers();
+    shake.update(dt);
+    // net.js never calls Player.update() (MP prediction drives the ship via
+    // stepShip directly), so hitPulse — set to 1 in applySnapshot on a real
+    // hit — has nothing else decaying it back down; without this the red
+    // vignette would flash once and then stay stuck at full opacity.
+    if (player.hitPulse > 0) player.hitPulse = Math.max(0, player.hitPulse - dt * 2.5);
     enemies.update(dt);
     pods.update(dt);
     bonuses.update(dt);
@@ -506,7 +630,9 @@ function runOnline({ ws, welcome }, { mode, name }) {
         radarMissiles.push({ position: pr.pos[mi], mine: pr.own[mi] === pr.selfId });
       }
     }
-    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles);
+    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles, dt);
+    if (radar.autoZoomStarted) hud.flash('SCANNER AUTO-RANGING…', 1.2);
+    else if (radar.autoZoomMaxedOut) hud.flash('NO CONTACTS IN RANGE', 1.6);
     orient.update(player);
 
     if (wasAlive && !player.alive) {
@@ -522,6 +648,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       if (camErr.lengthSq() < 1e-6) camErr.set(0, 0, 0);
       camera.position.copy(player.position).add(camErr);
       camera.quaternion.copy(player.quaternion);
+      shake.apply(camera);
     } else {
       _lookAt.copy(world.pods.centroid);
       let nd = Infinity;
@@ -553,8 +680,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
     const lockTarget = computeLock(W, H);
     player.lockTarget = lockTarget;
     hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
-    const roster = [{ id: welcome.playerId, n: myName, hull: player.hull, maxHull: player.maxHull, a: player.alive }];
-    for (const o of world.others) roster.push({ id: o.id, n: o.name, hull: o.hull, maxHull: o.maxHull, a: o.alive });
+    const roster = [{ id: welcome.playerId, n: myName, hull: player.hull, maxHull: player.maxHull, a: player.alive, rt: rtt }];
+    for (const o of world.others) roster.push({ id: o.id, n: o.name, hull: o.hull, maxHull: o.maxHull, a: o.alive, rt: o.rtt || 0 });
 
     hud.update(dt, player, enemies, pods, world.score, radar, {
       locked: !!lockTarget,
@@ -564,9 +691,16 @@ function runOnline({ ws, welcome }, { mode, name }) {
       dm,
       online: true,
       board: world.board,
+      fragLimit: dmFragLimit,
+      timeLeft: world.timeLeft,
       roster,
       selfId: welcome.playerId,
     });
+
+    if (matchOverUntil > 0) {
+      const left = Math.max(0, Math.ceil((matchOverUntil - performance.now()) / 1000));
+      matchoverSub.textContent = `next match in ${left}s`;
+    }
   }
   requestAnimationFrame(frame);
 }
