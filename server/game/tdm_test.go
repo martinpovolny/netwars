@@ -224,15 +224,21 @@ func TestTeamSpawnSideBias(t *testing.T) {
 	}
 	a := newArena(k, "unit-tdm-side", "tdm", "tdm-side-seed", 0, 0)
 	for i := 0; i < 40; i++ {
+		// the anchor moves (actionCentroid, see arena.go) as players spread
+		// out, so "the right side" means relative to it, not absolute world
+		// X — captured before the join, the same state dmSpawnPos itself
+		// would have used internally for this exact spawn.
+		anchorX := a.actionCentroid("").X
 		p := joinBareTeam(a)
+		relX := p.Ship.Pos.X - anchorX
 		switch p.team {
 		case 0:
-			if p.Ship.Pos.X < 0 {
-				t.Fatalf("team 0 spawn on the wrong side: %+v", p.Ship.Pos)
+			if relX < 0 {
+				t.Fatalf("team 0 spawn on the wrong side of the anchor (x=%.1f, anchor.x=%.1f): %+v", p.Ship.Pos.X, anchorX, p.Ship.Pos)
 			}
 		case 1:
-			if p.Ship.Pos.X > 0 {
-				t.Fatalf("team 1 spawn on the wrong side: %+v", p.Ship.Pos)
+			if relX > 0 {
+				t.Fatalf("team 1 spawn on the wrong side of the anchor (x=%.1f, anchor.x=%.1f): %+v", p.Ship.Pos.X, anchorX, p.Ship.Pos)
 			}
 		}
 	}

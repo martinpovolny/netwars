@@ -72,6 +72,10 @@ type World struct {
 	FSM         *LevelFSM
 	Score       int
 	Events      []Event
+	// Rocks is deathmatch/tdm only — nil in SP/co-op. Populated by newArena,
+	// not NewWorld, since it needs no per-mode branching inside the shared
+	// constructor (see server/game/rocks.go).
+	Rocks *Rocks
 }
 
 // NewWorld seeds an arena from its session id. Matches makeWorld's RNG use

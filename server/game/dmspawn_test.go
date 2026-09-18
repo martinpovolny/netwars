@@ -58,3 +58,31 @@ func TestDMSpawnPosExcludesSelf(t *testing.T) {
 		t.Fatalf("dmSpawnPos(self) returned the origin — it compared the ship against itself")
 	}
 }
+
+// A respawn must land near wherever the fight actually is, not a fixed
+// point — dmSpawnPos used to always anchor on the world origin regardless
+// of how far the players had drifted over a long match, which could strand
+// a respawning player far from every other ship (with radar's auto
+// zoom-out the only way back). It now anchors on actionCentroid.
+func TestDMSpawnPosFollowsThePlayers(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-spawnfollow", "dm", "spawnfollow-seed", 0, 0)
+	p1 := joinBare(a)
+	p2 := joinBare(a)
+
+	// the whole fight has drifted far from the origin over a long match
+	far := Vec3{X: 50000, Z: 50000}
+	p1.Ship.Pos = far
+	p2.Ship.Pos = far
+
+	pos := a.dmSpawnPos(p2.ID, -1)
+	if d := pos.DistanceTo(far); d > 2000 {
+		t.Fatalf("respawn landed %.0f from the actual fight (want near it, not the origin): %+v", d, pos)
+	}
+	if d := pos.Length(); d < 40000 {
+		t.Fatalf("respawn landed near the origin (%.0f from it) instead of following the players out to %+v", d, far)
+	}
+}

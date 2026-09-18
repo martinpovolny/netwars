@@ -16,6 +16,7 @@ import { Weapons } from './weapons.js';
 import { Enemies } from './enemies.js';
 import { Pods } from './pods.js';
 import { Bonuses } from './bonuses.js';
+import { Meteorites } from './meteorites.js';
 import { Explosions } from './explosions.js';
 import { Environment } from './render/environment.js';
 import { Radar } from './radar.js';
@@ -120,6 +121,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
   const enemies = new Enemies(scene);
   const pods = new Pods(scene);
   const bonuses = new Bonuses(scene);
+  const meteorites = new Meteorites(scene);
   const environment = new Environment(scene);
   const radar = new Radar();
   const orient = new OrientationInset();
@@ -139,6 +141,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     fleet: { list: [], level: welcome.snapshot.level || 1, goals: {} },   // goals: M2.6 (server sends per-class remaining)
     pods: { list: [], centroid: new THREE.Vector3(), total: K.pods.perLevel, get alive() { return this.list.length; } },
     bonuses: { list: [] },
+    rocks: { list: [] }, // deathmatch/tdm only; stays empty in coop
     projectiles: makeProjStore(K.weapons.max, welcome.playerId),
     fsm: { state: welcome.snapshot.fsm || 'playing' },
     score: welcome.snapshot.score || 0,
@@ -153,6 +156,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
   enemies.attach(world.fleet);
   pods.attach(world.pods);
   bonuses.attach(world.bonuses);
+  meteorites.attach(world.rocks);
   weapons.attach(world.projectiles);
 
   // other players' ships — a diff-rendered mesh + a radar-facing record per
@@ -277,7 +281,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
   applySnapshot(welcome.snapshot, true);
 
   window.__nw = {
-    online: true, scene, camera, player, world, enemies, pods, bonuses, weapons,
+    online: true, scene, camera, player, world, enemies, pods, bonuses, meteorites, weapons,
     explosions, environment, radar, input, audio, hud, ws, playerId: welcome.playerId,
     paused: false, get score() { return world.score; }, get state() { return world.fsm.state; },
   };
@@ -390,6 +394,10 @@ function runOnline({ ws, welcome }, { mode, name }) {
       // the explosion FX below stay unconditional: a collision or impact is
       // reasonable for anyone nearby to see/hear, "you got hurt" isn't.
       case 'ram': explosions.blast(pos, 0xffcc55); audio.boom(); hud.flash('COLLISION', 1.2); break;
+      // rockHit fires for both a ship bouncing off a meteorite and a shot
+      // absorbed by one — same "anyone nearby can see/hear it" broadcast
+      // reasoning as ram/playerHit above, no victim id to gate on.
+      case 'rockHit': explosions.spark(pos, 0x9a8a76); audio.boom(); break;
       case 'podStrikeKill': explosions.blast(pos, 0xff5ad0); audio.boom(); break;
       case 'enemyHit': explosions.hit(pos, ev.isMissile ? 0xffd23a : 0xbfe8ff); break;
       case 'enemyKill': explosions.blast(pos, 0xffcc55); audio.boom(); break;
@@ -575,6 +583,22 @@ function runOnline({ ws, welcome }, { mode, name }) {
       dst.tpos.set(src.p[0], src.p[1], src.p[2]);
     });
 
+    // rocks: server-authoritative only (server/game/rocks.go), same id-keyed
+    // pattern as enemies — a stable identity per rock across snapshots, not
+    // index position, even though in practice rocks never spawn/despawn
+    // mid-match the way enemies do.
+    syncById(world.rocks.list, s.rocks || [], (dst, src, isNew) => {
+      if (isNew) {
+        dst.position = new THREE.Vector3(src.p[0], src.p[1], src.p[2]);
+        dst.quaternion = new THREE.Quaternion(src.q[0], src.q[1], src.q[2], src.q[3]);
+        dst.tpos = dst.position.clone();
+        dst.tquat = dst.quaternion.clone();
+      }
+      dst.tpos.set(src.p[0], src.p[1], src.p[2]);
+      dst.tquat.set(src.q[0], src.q[1], src.q[2], src.q[3]);
+      dst.radius = src.r;
+    });
+
     // projectiles: server sends the live ones by pool index
     const pr = world.projectiles;
     pr.ttl.fill(0);
@@ -604,6 +628,10 @@ function runOnline({ ws, welcome }, { mode, name }) {
     }
     for (const p of world.pods.list) if (p.tpos) p.position.lerp(p.tpos, a);
     for (const b of world.bonuses.list) if (b.tpos) b.position.lerp(b.tpos, a);
+    for (const r of world.rocks.list) {
+      if (r.tpos) r.position.lerp(r.tpos, a);
+      if (r.tquat) r.quaternion.slerp(r.tquat, a);
+    }
   }
 
   // ---- frame loop ------------------------------------------
@@ -647,6 +675,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     enemies.update(dt);
     pods.update(dt);
     bonuses.update(dt);
+    meteorites.update();
     weapons.update(dt);
     explosions.update(dt);
     const radarMissiles = [];
@@ -660,7 +689,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
         radarMissiles.push({ position: pr.pos[mi], mine: friendly });
       }
     }
-    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles, dt);
+    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles, meteorites, dt);
     if (radar.autoZoomStarted) hud.flash('SCANNER AUTO-RANGING…', 1.2);
     else if (radar.autoZoomMaxedOut) hud.flash('NO CONTACTS IN RANGE', 1.6);
     orient.update(player);

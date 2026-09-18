@@ -140,6 +140,16 @@ type BonusS struct {
 	Pos  Vec3   `json:"p"`
 }
 
+// RockS is a deathmatch/tdm meteorite — server-authoritative only (see
+// server/game/rocks.go), so unlike ShipS there's nothing here for a client
+// to predict: it just renders p/q as sent, same as an enemy or a pod.
+type RockS struct {
+	ID     int     `json:"id"` // list position is stable (rocks never spawn/despawn mid-match), but an explicit id keeps the client's diff-sync pattern consistent with pods/enemies
+	Pos    Vec3    `json:"p"`
+	Quat   Quat    `json:"q"`
+	Radius float64 `json:"r"`
+}
+
 type ProjS struct {
 	I    int    `json:"i"`
 	Pos  Vec3   `json:"p"`
@@ -164,6 +174,7 @@ type Snapshot struct {
 	Enemies  []EnemyS       `json:"enemies"`
 	Pods     []PodS         `json:"pods"`
 	Bonuses  []BonusS       `json:"bonuses"`
+	Rocks    []RockS        `json:"rocks,omitempty"` // deathmatch/tdm only; absent (not just empty) outside those modes
 	Proj     []ProjS        `json:"proj"`
 	Board    []ScoreS       `json:"board,omitempty"` // deathmatch scoreboard
 	TimeLeft float64        `json:"tl,omitempty"`    // deathmatch, only when a time limit is set: seconds left in the match

@@ -269,6 +269,28 @@ export function makeBonus(kind) {
   return g;
 }
 
+// Grey-brown tumbling meteorite (deathmatch/tdm only, server/game/rocks.go).
+// Purely decorative jaggedness — each instance jitters its own facets
+// client-side; only position/quaternion/radius (what hits actually use) come
+// from the server, so the exact facets never need to match between clients.
+export function makeRock(radius) {
+  const g = new THREE.Group();
+  const geo = new THREE.IcosahedronGeometry(radius, 1);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const jitter = 1 + (Math.random() - 0.5) * 0.35;
+    pos.setXYZ(i, pos.getX(i) * jitter, pos.getY(i) * jitter, pos.getZ(i) * jitter);
+  }
+  geo.computeVertexNormals();
+  const body = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color: 0x8a7a68, flatShading: true, roughness: 0.95, emissive: 0x1a1410, emissiveIntensity: 0.4 })
+  );
+  g.add(body);
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x4a4038, transparent: true, opacity: 0.5 })));
+  return g;
+}
+
 // Pink faceted pod with little white antenna spikes (NetWars "pods").
 export function makePod() {
   const g = new THREE.Group();
