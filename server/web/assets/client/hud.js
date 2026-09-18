@@ -140,9 +140,22 @@ export class HUD {
         let title = 'FRAGS';
         if (lock.fragLimit) title += ` <span class="limit">· to ${lock.fragLimit}</span>`;
         if (lock.timeLeft > 0) title += ` <span class="limit">· ${fmtClock(lock.timeLeft)}</span>`;
-        this._setBoard(`<div class="btitle">${title}</div>` + (lock.board || [])
-          .map((r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${escName(r.n)}${fmtRttSpan(r.rt)}</span><span class="frag">${r.f | 0}</span></div>`)
-          .join(''));
+        const row = (r) => `<div class="brow${r.id === lock.selfId ? ' me' : ''}${r.a ? '' : ' out'}"><span>${escName(r.n)}${fmtRttSpan(r.rt)}</span><span class="frag">${r.f | 0}</span></div>`;
+        if (lock.teams) {
+          // 2-team: a sub-header per side (team color + running total),
+          // rows grouped under it — server already sends board[] pre-sorted
+          // by team, but filter explicitly rather than assume that ordering.
+          const TEAM_NAMES = ['TEAM A', 'TEAM B'];
+          const scores = lock.teamScores || [0, 0];
+          let html = `<div class="btitle">${title}</div>`;
+          for (let team = 0; team < 2; team++) {
+            html += `<div class="bteam team${team}">${TEAM_NAMES[team]} <span class="tscore">${scores[team] | 0}</span></div>`;
+            html += (lock.board || []).filter((r) => (r.tm | 0) === team).map(row).join('');
+          }
+          this._setBoard(html);
+        } else {
+          this._setBoard(`<div class="btitle">${title}</div>` + (lock.board || []).map(row).join(''));
+        }
       }
     } else {
       this.obj.style.display = '';

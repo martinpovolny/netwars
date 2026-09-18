@@ -22,7 +22,7 @@ func TestDMSpawnPosKeepsPlayersApart(t *testing.T) {
 	var players []*Player
 	for i := 0; i < 4; i++ {
 		p := joinBare(a)
-		p.Ship.Pos = a.dmSpawnPos(p.ID)
+		p.Ship.Pos = a.dmSpawnPos(p.ID, -1) // -1: plain dm, no team-side bias
 		players = append(players, p)
 	}
 
@@ -53,7 +53,7 @@ func TestDMSpawnPosExcludesSelf(t *testing.T) {
 	p := joinBare(a)
 	// p.Ship.Pos is still the zero value here, Alive is true (set by newShip) —
 	// exactly the join-time state dmSpawnPos must not compare itself against.
-	pos := a.dmSpawnPos(p.ID)
+	pos := a.dmSpawnPos(p.ID, -1)
 	if pos == (Vec3{}) {
 		t.Fatalf("dmSpawnPos(self) returned the origin — it compared the ship against itself")
 	}

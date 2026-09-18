@@ -39,6 +39,7 @@ type Player struct {
 	respawnCd       float64 // >0 while dead and counting down to respawn
 	frags           int     // deathmatch kills
 	rtt             float64 // this player's own self-reported RTT to the server (ms), from Input.Rtt — shown to other players next to their name
+	team            int     // 2-team deathmatch only: 0 or 1, assigned at join and fixed for the session
 }
 
 func (p *Player) send(b []byte) {
@@ -65,16 +66,19 @@ type Arena struct {
 	leave chan *Player
 	in    chan arenaInput
 
-	dm bool // Mode == "dm" — no AI/pods, player-vs-player friendly fire, frags
+	dm    bool // Mode == "dm" || "tdm" — no AI/pods, player-vs-player friendly fire, frags
+	teams bool // Mode == "tdm" — 2-team variant of dm: team assignment, no same-team damage, team-scored match-end
 
 	// deathmatch match-end (0 = no limit); set at arena creation, fixed for
 	// the arena's lifetime. matchOverCd counts down while the results are
 	// on screen and combat/respawn is frozen; matchElapsed only advances
-	// while the match is live.
+	// while the match is live. In "tdm" fragLimit/timeLimit compare against
+	// team totals (teamFrags), not any one player's frags.
 	fragLimit    int
 	timeLimit    float64
 	matchElapsed float64
 	matchOverCd  float64
+	teamFrags    [2]int // "tdm" only
 
 	// run()-only
 	players map[string]*Player
@@ -85,13 +89,14 @@ type Arena struct {
 	onEmpty func() // called when the last player leaves (registry teardown)
 }
 
-// fragLimit/timeLimit (0 = no limit) only matter when mode is "dm" — the
-// caller decides, same as mode itself: whoever's hello creates the arena
+// fragLimit/timeLimit (0 = no limit) only matter when mode is "dm"/"tdm" —
+// the caller decides, same as mode itself: whoever's hello creates the arena
 // sets it for the match's lifetime (see Sessions.getOrCreate).
 func newArena(k *Constants, session, mode, seed string, fragLimit int, timeLimit float64) *Arena {
 	a := &Arena{
 		Session: session, Mode: mode, k: k,
-		dm:        mode == "dm",
+		dm:        mode == "dm" || mode == "tdm",
+		teams:     mode == "tdm",
 		fragLimit: fragLimit,
 		timeLimit: timeLimit,
 		world:     NewWorld(k, seed),
@@ -101,6 +106,20 @@ func newArena(k *Constants, session, mode, seed string, fragLimit int, timeLimit
 		players:   map[string]*Player{},
 	}
 	return a
+}
+
+// assignTeam auto-balances new joins onto whichever team currently has
+// fewer players (ties -> team 0) — teams stay roughly even through joins
+// and leaves without anyone having to pick a side.
+func (a *Arena) assignTeam() int {
+	var count [2]int
+	for _, id := range a.order {
+		count[a.players[id].team]++
+	}
+	if count[1] < count[0] {
+		return 1
+	}
+	return 0
 }
 
 func newShip(k *Constants) *Ship {
@@ -158,17 +177,20 @@ func (a *Arena) run(ctx context.Context) {
 			p.ID = "p" + itoa(a.nextID)
 			p.Ship = newShip(a.k)
 			p.mslTarget = -1
+			if a.teams {
+				p.team = a.assignTeam() // before appending to a.order — must not count itself
+			}
 			a.players[p.ID] = p
 			a.order = append(a.order, p.ID)
 			if a.dm {
-				p.Ship.Pos = a.dmSpawnPos(p.ID)
+				p.Ship.Pos = a.dmSpawnPos(p.ID, a.teamOrNone(p))
 				p.Ship.Invuln = a.k.Player.InvulnOnRespawn
 			} else {
 				p.Ship.Pos = spawnSlot(len(a.order) - 1)
 			}
 			wel := proto.Welcome{
 				Type: proto.TypeWelcome, PlayerID: p.ID, Session: a.Session,
-				Mode: a.Mode, Tick: a.tick,
+				Mode: a.Mode, Tick: a.tick, Team: p.team,
 				Snapshot: BuildSnapshot(a.world, a.tick, 0, p.Ship, a.othersOf(p)),
 			}
 			if a.dm {
@@ -176,6 +198,9 @@ func (a *Arena) run(ctx context.Context) {
 				wel.Snapshot.TimeLeft = a.timeLeft()
 				wel.FragLimit = a.fragLimit
 				wel.TimeLimit = a.timeLimit
+				if a.teams {
+					wel.Snapshot.TeamScores = []int{a.teamFrags[0], a.teamFrags[1]}
+				}
 			}
 			p.send(proto.Marshal(wel))
 			log.Printf("arena %q: +%s (%d players)", a.Session, p.ID, len(a.players))
@@ -341,7 +366,7 @@ func (a *Arena) stepDM() {
 			}
 			if p.respawnCd -= tickDT; p.respawnCd <= 0 {
 				resetShip(p.Ship, a.k)
-				p.Ship.Pos = a.dmSpawnPos(p.ID)
+				p.Ship.Pos = a.dmSpawnPos(p.ID, a.teamOrNone(p))
 				p.Ship.Invuln = a.k.Player.InvulnOnRespawn
 				p.respawnCd = 0
 			}
@@ -389,11 +414,16 @@ func (a *Arena) stepDM() {
 	}
 	if a.tick%snapEvery == 0 {
 		board := a.board()
+		var teamScores []int
+		if a.teams {
+			teamScores = []int{a.teamFrags[0], a.teamFrags[1]}
+		}
 		for _, id := range a.order {
 			p := a.players[id]
 			s := BuildSnapshot(a.world, a.tick, p.lastSeq, p.Ship, a.othersOf(p))
 			s.Board = board
 			s.TimeLeft = a.timeLeft()
+			s.TeamScores = teamScores
 			p.send(proto.Marshal(s))
 		}
 	}
@@ -441,6 +471,7 @@ func (a *Arena) dmProjectiles() []Event {
 			r += kw["missileHitPad"]
 			dmg = kw["missileDmg"]
 		}
+		owner := a.players[pr.Owner[i]] // may be nil: shooter disconnected mid-flight, shot still flies
 		for _, id := range a.order {
 			if id == pr.Owner[i] {
 				continue
@@ -449,14 +480,20 @@ func (a *Arena) dmProjectiles() []Event {
 			if !vic.Ship.Alive {
 				continue
 			}
+			if a.teams && owner != nil && owner.team == vic.team {
+				continue // friendly fire off — the bolt passes through to a real target beyond
+			}
 			if pr.Pos[i].DistanceToSq(vic.Ship.Pos) < r*r {
 				absorbed := vic.Ship.Invuln > 0
 				vic.Ship.Damage(dmg)
 				pr.Ttl[i] = 0
 				evs = append(evs, Event{Kind: "playerHit", Pos: pr.Pos[i], Absorbed: absorbed})
 				if !absorbed && !vic.Ship.Alive {
-					if kr := a.players[pr.Owner[i]]; kr != nil {
-						kr.frags++
+					if owner != nil {
+						owner.frags++
+						if a.teams {
+							a.teamFrags[owner.team]++
+						}
 					}
 					evs = append(evs, Event{Kind: "frag", Pos: vic.Ship.Pos, Killer: pr.Owner[i], Victim: id})
 				}
@@ -504,6 +541,9 @@ func (a *Arena) dmRams() []Event {
 			if !sa.Alive || !sb.Alive {
 				continue
 			}
+			if a.teams && pa.team == pb.team {
+				continue // friendly fire off — teammates pass through each other
+			}
 			if sa.Pos.DistanceToSq(sb.Pos) >= rr*rr {
 				continue
 			}
@@ -516,10 +556,16 @@ func (a *Arena) dmRams() []Event {
 			evs = append(evs, Event{Kind: "ram", Pos: sa.Pos})
 			if !sa.Alive && sb.Alive {
 				pb.frags++
+				if a.teams {
+					a.teamFrags[pb.team]++
+				}
 				evs = append(evs, Event{Kind: "frag", Pos: sa.Pos, Killer: pb.ID, Victim: pa.ID})
 			}
 			if !sb.Alive && sa.Alive {
 				pa.frags++
+				if a.teams {
+					a.teamFrags[pa.team]++
+				}
 				evs = append(evs, Event{Kind: "frag", Pos: sb.Pos, Killer: pa.ID, Victim: pb.ID})
 			}
 		}
@@ -527,7 +573,10 @@ func (a *Arena) dmRams() []Event {
 	return evs
 }
 
-// board is the deathmatch scoreboard, highest frags first.
+// board is the deathmatch scoreboard. Plain "dm": highest individual frags
+// first. "tdm": grouped by team (each team's rows contiguous, highest frags
+// first within it) so the client can split the array on Team without doing
+// its own grouping.
 func (a *Arena) board() []proto.ScoreS {
 	rows := make([]proto.ScoreS, 0, len(a.order))
 	for _, id := range a.order {
@@ -536,9 +585,18 @@ func (a *Arena) board() []proto.ScoreS {
 		if name == "" {
 			name = id
 		}
-		rows = append(rows, proto.ScoreS{ID: id, Name: name, Frags: p.frags, Alive: p.Ship.Alive, Rtt: p.rtt})
+		rows = append(rows, proto.ScoreS{ID: id, Name: name, Frags: p.frags, Alive: p.Ship.Alive, Rtt: p.rtt, Team: p.team})
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Frags > rows[j].Frags })
+	if a.teams {
+		sort.SliceStable(rows, func(i, j int) bool {
+			if rows[i].Team != rows[j].Team {
+				return rows[i].Team < rows[j].Team
+			}
+			return rows[i].Frags > rows[j].Frags
+		})
+	} else {
+		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Frags > rows[j].Frags })
+	}
 	return rows
 }
 
@@ -556,8 +614,12 @@ func (a *Arena) timeLeft() float64 {
 
 // checkMatchOver reports whether the configured frag/time limit has just
 // been reached, and who's leading ("" on a tie for the lead). Only called
-// while the match is live — stepDM skips it once frozen.
+// while the match is live — stepDM skips it once frozen. "tdm" compares team
+// totals instead of any one player's frags (see checkTeamMatchOver).
 func (a *Arena) checkMatchOver() (winner string, over bool) {
+	if a.teams {
+		return a.checkTeamMatchOver()
+	}
 	best, bestFrags, tie := "", -1, false
 	for _, id := range a.order {
 		f := a.players[id].frags
@@ -581,17 +643,43 @@ func (a *Arena) checkMatchOver() (winner string, over bool) {
 	return "", false
 }
 
+// checkTeamMatchOver — checkMatchOver's "tdm" variant. winner is a team id
+// ("0"/"1"), not a player id — "" on a tie.
+func (a *Arena) checkTeamMatchOver() (winner string, over bool) {
+	winner = "0"
+	switch {
+	case a.teamFrags[1] > a.teamFrags[0]:
+		winner = "1"
+	case a.teamFrags[1] == a.teamFrags[0]:
+		winner = ""
+	}
+	top := a.teamFrags[0]
+	if a.teamFrags[1] > top {
+		top = a.teamFrags[1]
+	}
+	if a.fragLimit > 0 && top >= a.fragLimit {
+		return winner, true
+	}
+	if a.timeLimit > 0 && a.matchElapsed >= a.timeLimit {
+		return winner, true
+	}
+	return "", false
+}
+
 // restartMatch clears frags and puts every ship back at a fresh dm spawn —
 // called once matchOverCd runs out, so a session keeps going through as many
-// matches as its players want without anyone having to rejoin.
+// matches as its players want without anyone having to rejoin. Team
+// assignments (in "tdm") are NOT reshuffled — players keep whatever side
+// they were on, same as a normal team-game convention.
 func (a *Arena) restartMatch() {
 	a.matchElapsed = 0
+	a.teamFrags = [2]int{}
 	for _, id := range a.order {
 		p := a.players[id]
 		p.frags = 0
 		p.respawnCd = 0
 		resetShip(p.Ship, a.k)
-		p.Ship.Pos = a.dmSpawnPos(p.ID)
+		p.Ship.Pos = a.dmSpawnPos(p.ID, a.teamOrNone(p))
 		p.Ship.Invuln = a.k.Player.InvulnOnRespawn
 	}
 }
@@ -604,7 +692,30 @@ func (a *Arena) restartMatch() {
 // the ship being (re)positioned itself: at join time it already sits at the
 // zero-value origin with Alive still true, which would otherwise bias every
 // candidate away from (0,0,0) for no reason.
-func (a *Arena) dmSpawnPos(selfID string) Vec3 {
+// teamOrNone is the team-bias argument for dmSpawnPos: -1 outside "tdm" (no
+// side bias), else the player's assigned team.
+func (a *Arena) teamOrNone(p *Player) int {
+	if !a.teams {
+		return -1
+	}
+	return p.team
+}
+
+// dmSpawnPos drops a (re)spawning fighter onto a random point ~550-950u out,
+// retrying if the draw lands too close to another currently-alive ship — a
+// plain random draw with no separation check could, and did, put two players
+// right on top of each other (or close enough that one dies before it can
+// react), especially with 3+ players sharing that same ring. selfID excludes
+// the ship being (re)positioned itself: at join time it already sits at the
+// zero-value origin with Alive still true, which would otherwise bias every
+// candidate away from (0,0,0) for no reason.
+//
+// team (-1 = no bias, else 0/1) mirrors the draw onto that team's own side
+// of the arena (team 0 always +X, team 1 always -X) by flipping the X
+// component when it lands on the wrong side — gives each team a real "home"
+// area for positional identity, without spending an extra rng draw (so it
+// doesn't perturb anything that assumes a fixed draw count per spawn).
+func (a *Arena) dmSpawnPos(selfID string, team int) Vec3 {
 	const minSep = 400.0 // clear every other alive ship by at least this
 	const maxTries = 10
 	best, bestD := Vec3{}, -1.0
@@ -612,6 +723,9 @@ func (a *Arena) dmSpawnPos(selfID string) Vec3 {
 		var d Vec3
 		RandomDir(a.world.Rng, &d)
 		d.MultiplyScalar(550 + a.world.Rng.Float64()*400)
+		if (team == 0 && d.X < 0) || (team == 1 && d.X > 0) {
+			d.X = -d.X
+		}
 
 		nd := math.Inf(1)
 		for _, id := range a.order {
@@ -687,7 +801,7 @@ func (a *Arena) fireWeapons(p *Player) {
 			}
 		}
 		if target == nil && p.mslTargetPlayer != "" {
-			if v, ok := a.players[p.mslTargetPlayer]; ok && v.ID != p.ID && v.Ship.Alive {
+			if v, ok := a.players[p.mslTargetPlayer]; ok && v.ID != p.ID && v.Ship.Alive && !(a.teams && v.team == p.team) {
 				target = v.Ship
 			}
 		}
