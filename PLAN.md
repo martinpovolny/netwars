@@ -234,15 +234,33 @@ manual one-off; not part of build or CI.)
   foe regardless of hull colour. Also separated Raider (`#f5b81a`→`#ff8c1a`,
   orange) from Fighter (`#22d4cc`→`#16d9c4`, turquoise) — same dart hull,
   now ~144° apart in hue instead of sitting close together.
-- **2-Team Deathmatch / 2-Team Capture the Flag** — listed as disabled
-  "(soon)" options in the start-screen match-type picker; no server-side team
-  assignment, spawn zones, or scoring exists yet. Ship visuals are decided
-  ahead of the build: team ships use the new player-only hull
-  (`makePlayerShip` in `client/ships.js`, see below), colored by team rather
-  than the per-player FFA palette — **Team A `#2f8fff`** (blue), **Team B
-  `#ff2f6e`** (rose-red), picked for maximum hue separation from each other
-  (~130° apart) and kept clear of the hostile-fire red (`#ff2a1a`-ish, ~22°
-  away) so a teammate's hull doesn't read as enemy tracer fire.
+- **2-Team Deathmatch** — *done* (`m2-world` branch): `&mode=tdm`, enabled in
+  the start-screen picker (was "(soon)"). Reuses all of `dm`'s machinery
+  (arena.go's `dm` bool is now `mode=="dm"||"tdm"`) plus a `teams` bool for
+  the team-specific bits: auto-balanced team assignment at join (whichever
+  side has fewer players; stable for the whole session, not reshuffled on a
+  match restart), no same-team damage (bolts pass through a teammate to a
+  real target beyond; rams between teammates are a no-op; a missile can't
+  even lock a teammate, client and server both), a spawn draw mirrored onto
+  each team's own side of the arena (team 0 always +X, team 1 always -X) for
+  positional identity, and match-end/scoreboard driven by TEAM frag totals
+  (`Arena.teamFrags`) rather than any one player's. Ship colors as reserved
+  below — **Team A `#2f8fff`** (blue), **Team B `#ff2f6e`** (rose-red) — used
+  for other players' hulls, radar blips, and a teammate's in-flight missile
+  (shown in the calm "mine" color, not amber/red danger); own ship stays the
+  existing green "that's you" marker regardless of team. HUD scoreboard
+  gained a team-grouped variant (colored sub-header + running total per
+  side) alongside the existing plain-dm list. New tests:
+  `server/game/tdm_test.go` (balance, both friendly-fire paths, team frag
+  crediting, team-totals match-end, missile-lock exclusion, spawn-side bias
+  — each confirmed to fail without its fix) plus a regression test for a
+  real bug caught live: `BuildSnapshot`'s `Others[]` loop set `Rtt` but not
+  `Team`, so every other player's ship rendered in team-0's color regardless
+  of their actual team.
+- **2-Team Capture the Flag** — still just a disabled "(soon)" option in the
+  match-type picker; no flag/base/carry logic exists. Same team
+  infrastructure as TDM above (assignment, spawn sides, no-friendly-fire,
+  colors) would carry over directly.
 
 - **Meteorites** — *in progress* (branch stacked after the star catalogue):
   solid tumbling rocks. `shared/sim/rocks.js` (seeded field, drift + tumble +

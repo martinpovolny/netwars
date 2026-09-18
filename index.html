@@ -166,6 +166,20 @@
   #board .rt.warn { color: #ffb020; opacity: 0.9; }
   #board .rt.crit { color: var(--amber); opacity: 0.95; }
 
+  /* 2-team deathmatch: a colored sub-header per side (blue / rose-red,
+     matching the team-colored hulls) with its running total, rows grouped
+     underneath — same .brow rows as plain dm, just split into two groups. */
+  #board .bteam {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 11px; letter-spacing: 1.5px; font-weight: bold;
+    padding: 5px 0 2px; margin-top: 2px;
+    border-bottom: 1px solid currentColor;
+  }
+  #board .bteam:first-of-type { margin-top: 0; }
+  #board .bteam.team0 { color: #2f8fff; }
+  #board .bteam.team1 { color: #ff2f6e; }
+  #board .bteam .tscore { font-variant-numeric: tabular-nums; }
+
   /* centre message */
   #msg {
     position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
@@ -348,7 +362,7 @@
       <select id="f-mode">
         <option value="coop">Co-op — vs AI waves, shared pod defence</option>
         <option value="dm">Deathmatch — free-for-all</option>
-        <option value="tdm" disabled>2-Team Deathmatch (soon)</option>
+        <option value="tdm">2-Team Deathmatch</option>
         <option value="ctf" disabled>2-Team Capture the Flag (soon)</option>
       </select>
       <p class="hint">Anyone using the same session name joins the same match.</p>

@@ -37,7 +37,7 @@ func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Player) pro
 			ID: o.ID, Name: o.Name,
 			Pos: pv(o.Ship.Pos), Vel: pv(o.Ship.Vel), Quat: pq(o.Ship.Quat),
 			Hull: o.Ship.Hull, MaxHull: o.Ship.MaxHull, Missiles: o.Ship.Missiles, Alive: o.Ship.Alive,
-			Rtt: o.rtt,
+			Rtt: o.rtt, Team: o.team,
 		})
 	}
 	for _, e := range w.Fleet.List {

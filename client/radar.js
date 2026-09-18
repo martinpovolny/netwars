@@ -154,8 +154,9 @@ export class Radar {
   }
 
   // missiles: [{ position, mine }] — active missile-kind projectiles. `mine`
-  // picks a calmer colour for your own outgoing shot; an opponent's missile
-  // (the actual threat) shows as amber, flipping to red once it's close.
+  // picks a calmer colour for a non-threat — your own outgoing shot, or (in
+  // 2-team deathmatch) a teammate's; an opposing missile (the actual threat)
+  // shows as amber, flipping to red once it's close.
   // dt drives the auto zoom-out (see _autoZoom) — omit it (e.g. a one-off
   // render) to just skip that bookkeeping for the call.
   update(player, enemies, pods, bonuses, others, missiles, dt = 0) {

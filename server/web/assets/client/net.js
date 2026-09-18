@@ -79,7 +79,10 @@ function connect(url, { session, mode, name, fragLimit, timeLimit }) {
 // --- the online game ---------------------------------------------------
 
 function runOnline({ ws, welcome }, { mode, name }) {
-  const dm = (mode || welcome.mode) === 'dm';   // deathmatch: PvP, frags, no AI
+  const actualMode = mode || welcome.mode;
+  const dm = actualMode === 'dm' || actualMode === 'tdm'; // deathmatch (either variant): PvP, frags, no AI
+  const teams = actualMode === 'tdm';   // 2-team deathmatch: teammates don't hurt each other, team-scored
+  const myTeam = welcome.team;          // meaningful only when teams — 0 or 1, assigned by the server at join
   const myName = name || welcome.playerId;
   // ---- render shell (mirrors client/sp.js) --------------------------
   const canvas = document.getElementById('view');
@@ -142,6 +145,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     others: [],           // other players' ships (meshes)
     board: welcome.snapshot.board || [],   // deathmatch scoreboard
     timeLeft: welcome.snapshot.tl || 0,    // deathmatch countdown, seconds; 0 = no time limit
+    teamScores: welcome.snapshot.ts || [0, 0], // 2-team deathmatch only
   };
   const dmFragLimit = welcome.fragLimit || 0; // 0 = no limit — fixed for the arena's lifetime
   const inputLog = [];   // { seq, ctrl, dt } — a sent input, kept until the server acks it
@@ -154,7 +158,12 @@ function runOnline({ ws, welcome }, { mode, name }) {
   // other players' ships — a diff-rendered mesh + a radar-facing record per
   // remote ship. Each gets a distinct hue (NOT red — that reads as an enemy;
   // NOT green — that's you): amber, then teal / pink / violet for a crowd.
+  // 2-team deathmatch colors by TEAM instead — blue vs rose-red, ~130° apart
+  // for max separation and both well clear of hostile-fire red, so at a
+  // glance a hull reads as "mine" or "theirs" regardless of which specific
+  // teammate/opponent it is (reserved in PLAN.md ahead of this build).
   const OTHER_COLORS = [0xffb020, 0x35e0d0, 0xff5ad0, 0x9b6bff];
+  const TEAM_COLORS = [0x2f8fff, 0xff2f6e];
   const otherMeshes = [];
 
   // Remote ships render from a small timestamped sample buffer, not a
@@ -171,8 +180,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
   function syncOthers(list) {
     const now = performance.now();
     for (let i = 0; i < list.length; i++) {
-      const color = OTHER_COLORS[i % OTHER_COLORS.length];
       const o = list[i];
+      const color = teams ? TEAM_COLORS[(o.tm || 0) & 1] : OTHER_COLORS[i % OTHER_COLORS.length];
       const fresh = !otherMeshes[i];
       if (fresh) {
         const m = makePlayerShip(color, 1);
@@ -198,6 +207,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
       rec.hull = o.hull;
       rec.maxHull = o.maxHull || K.player.maxHull;
       rec.rtt = o.rt || 0; // that player's own measured RTT to the server, ms (0 = not yet known)
+      rec.team = o.tm || 0; // 2-team deathmatch only
     }
     for (let i = list.length; i < otherMeshes.length; i++) scene.remove(otherMeshes[i]);
     otherMeshes.length = list.length;
@@ -320,7 +330,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
       if (d < bd) { bd = d; best = obj; }
     };
     for (const e of enemies.list) if (!e.dead) consider(e);
-    if (dm) for (const o of world.others) if (o.alive) consider(o); // lock onto another player
+    // lock onto another player (deathmatch) — but never a teammate (2-team)
+    if (dm) for (const o of world.others) if (o.alive && !(teams && o.team === myTeam)) consider(o);
     return best;
   }
 
@@ -407,7 +418,20 @@ function runOnline({ ws, welcome }, { mode, name }) {
         const nameOf = (id) => { const r = (world.board || []).find((x) => x.id === id); return r ? r.n : id; };
         matchOverUntil = performance.now() + ev.hold * 1000;
         matchoverEl.classList.remove('win', 'lose');
-        if (!ev.wn) {
+        if (teams) {
+          // ev.wn is a TEAM id ("0"/"1") here, not a player id — omitted
+          // (falsy) on a tie, same omitempty convention as the dm branch.
+          const TEAM_NAMES = ['TEAM A', 'TEAM B'];
+          if (!ev.wn) {
+            matchoverTitle.textContent = 'MATCH OVER — TIE';
+          } else if (Number(ev.wn) === myTeam) {
+            matchoverTitle.textContent = 'MATCH OVER — YOUR TEAM WINS';
+            matchoverEl.classList.add('win');
+          } else {
+            matchoverTitle.textContent = `MATCH OVER — ${TEAM_NAMES[Number(ev.wn)]} WINS`;
+            matchoverEl.classList.add('lose');
+          }
+        } else if (!ev.wn) {
           matchoverTitle.textContent = 'MATCH OVER — TIE';
         } else if (ev.wn === welcome.playerId) {
           matchoverTitle.textContent = 'MATCH OVER — YOU WIN';
@@ -438,6 +462,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     world.fleet.level = s.level;
     world.fleet.goals = s.goals || {};
     if (s.board) world.board = s.board;
+    if (s.ts) world.teamScores = s.ts; // 2-team deathmatch: [teamA frags, teamB frags]
     world.timeLeft = s.tl || 0; // deathmatch countdown, seconds; 0 = no time limit
     world.score = s.score;
     world.fsm.state = s.fsm;
@@ -625,9 +650,14 @@ function runOnline({ ws, welcome }, { mode, name }) {
     weapons.update(dt);
     explosions.update(dt);
     const radarMissiles = [];
+    // 2-team: a teammate's missile is no more a threat than my own — the
+    // radar's "mine" bucket (calm gold, not amber/red danger) covers it too.
+    const ownerTeam = teams ? new Map(world.others.map((o) => [o.id, o.team])) : null;
     for (let mi = 0; mi < pr.max; mi++) {
       if (pr.ttl[mi] > 0 && pr.kind[mi] === 'missile') {
-        radarMissiles.push({ position: pr.pos[mi], mine: pr.own[mi] === pr.selfId });
+        const owner = pr.own[mi];
+        const friendly = owner === pr.selfId || (teams && ownerTeam.get(owner) === myTeam);
+        radarMissiles.push({ position: pr.pos[mi], mine: friendly });
       }
     }
     radar.update(player, enemies, pods, bonuses, world.others, radarMissiles, dt);
@@ -695,6 +725,9 @@ function runOnline({ ws, welcome }, { mode, name }) {
       timeLeft: world.timeLeft,
       roster,
       selfId: welcome.playerId,
+      teams,
+      myTeam,
+      teamScores: world.teamScores,
     });
 
     if (matchOverUntil > 0) {

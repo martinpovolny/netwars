@@ -76,11 +76,13 @@ for (const r of gtypeRadios) {
   });
 }
 
-// match-limit fields only matter (and only show) for deathmatch — co-op ends
-// on clearing the level table, not on frags or a clock.
-elDmFields.classList.toggle('hidden', elMode.value !== 'dm');
+// match-limit fields only matter (and only show) for deathmatch and its
+// 2-team variant — co-op ends on clearing the level table, not on frags or
+// a clock.
+const isDmLike = (mode) => mode === 'dm' || mode === 'tdm';
+elDmFields.classList.toggle('hidden', !isDmLike(elMode.value));
 elMode.addEventListener('change', () => {
-  elDmFields.classList.toggle('hidden', elMode.value !== 'dm');
+  elDmFields.classList.toggle('hidden', !isDmLike(elMode.value));
 });
 
 async function launch() {
@@ -93,14 +95,14 @@ async function launch() {
   const session = (elSession.value.trim() || randomSession()).slice(0, 24);
   const name = elName.value.trim().slice(0, 16);
   const mode = elMode.value;
-  const fragLimit = mode === 'dm' ? parseInt(elFragLimit.value, 10) || 0 : 0;
-  const timeLimit = mode === 'dm' ? parseInt(elTimeLimit.value, 10) || 0 : 0;
+  const fragLimit = isDmLike(mode) ? parseInt(elFragLimit.value, 10) || 0 : 0;
+  const timeLimit = isDmLike(mode) ? parseInt(elTimeLimit.value, 10) || 0 : 0;
   if (name) { try { localStorage.setItem('nw-name', name); } catch { /* ignore */ } }
 
   // reflect the choice in the URL — shareable, and survives a reload
   const qs = new URLSearchParams({ mode });
   if (name) qs.set('name', name);
-  if (mode === 'dm') { qs.set('frags', fragLimit); qs.set('time', timeLimit); }
+  if (isDmLike(mode)) { qs.set('frags', fragLimit); qs.set('time', timeLimit); }
   history.replaceState(null, '', `#${encodeURIComponent(session)}?${qs}`);
 
   const { startNetwork } = await import('./net.js');

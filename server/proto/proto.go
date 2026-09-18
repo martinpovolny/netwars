@@ -38,7 +38,7 @@ func PeekType(b []byte) string {
 type Hello struct {
 	Type    string `json:"type"`
 	Session string `json:"session"`
-	Mode    string `json:"mode"` // "coop" | "dm"
+	Mode    string `json:"mode"` // "coop" | "dm" | "tdm"
 	Name    string `json:"name,omitempty"`
 	// deathmatch match-end, set by whoever's hello creates the arena (a
 	// latecomer's values are ignored, same as Mode); 0 = no limit, and that's
@@ -95,6 +95,11 @@ type Welcome struct {
 	// session someone else already started (0 = no limit).
 	FragLimit int     `json:"fragLimit,omitempty"`
 	TimeLimit float64 `json:"timeLimit,omitempty"`
+	// 2-team deathmatch only: which team this connection was assigned to
+	// (0 or 1), auto-balanced at join and fixed for the session. Meaningless
+	// (and ignored client-side) outside mode "tdm" — no omitempty, since 0
+	// is team A, a real value, not "unset".
+	Team int `json:"team"`
 }
 
 type Vec3 [3]float64
@@ -112,6 +117,7 @@ type ShipS struct {
 	Alive     bool    `json:"alive"`
 	BoostFuel float64 `json:"bf"`           // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
 	Rtt       float64 `json:"rt,omitempty"` // others only — that player's own self-reported RTT to the server, ms
+	Team      int     `json:"tm,omitempty"` // 2-team deathmatch only: 0 or 1, which team this ship belongs to
 }
 
 type EnemyS struct {
@@ -161,6 +167,9 @@ type Snapshot struct {
 	Proj     []ProjS        `json:"proj"`
 	Board    []ScoreS       `json:"board,omitempty"` // deathmatch scoreboard
 	TimeLeft float64        `json:"tl,omitempty"`    // deathmatch, only when a time limit is set: seconds left in the match
+	// 2-team deathmatch only: [teamA frags, teamB frags], the number the
+	// match-end frag limit actually compares against (not any one player's).
+	TeamScores []int `json:"ts,omitempty"`
 }
 
 // ScoreS is one row of the deathmatch scoreboard.
@@ -170,6 +179,7 @@ type ScoreS struct {
 	Frags int     `json:"f"`
 	Alive bool    `json:"a"`
 	Rtt   float64 `json:"rt,omitempty"` // that player's own self-reported RTT to the server, ms
+	Team  int     `json:"tm,omitempty"` // 2-team deathmatch only: 0 or 1
 }
 
 type EventS struct {
@@ -187,7 +197,9 @@ type EventS struct {
 	// frag events (deathmatch): who killed whom.
 	Killer string `json:"kr,omitempty"`
 	Victim string `json:"vk,omitempty"`
-	// matchOver events (deathmatch): who has the most frags ("" on a tie);
+	// matchOver events: who won — a player id in "dm" (most frags, "" on a
+	// tie) or a team id ("0"/"1") in "tdm" (most team frags, "" on a tie);
+	// the client already knows its own mode and reads this accordingly.
 	// Hold (above) carries how long the results stay on screen.
 	Winner string `json:"wn,omitempty"`
 }
