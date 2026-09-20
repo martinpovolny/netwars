@@ -64,3 +64,50 @@ func TestDMBonusesCollectibleByAnyPlayer(t *testing.T) {
 		t.Fatalf("no bonusPicked event: %+v", evs)
 	}
 }
+
+// A shot that reaches a bonus must collect it for whoever fired it — DM's own
+// dmProjectiles() never called bonusHitByShot (co-op's Projectiles.Step
+// does, via weapons.go), so shooting a bonus in DM/TDM silently did nothing:
+// the shot passed straight through and the bonus was left uncollected.
+func TestDMBonusCollectedByShot(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newArena(k, "unit-dm-bonus-shot", "dm", "dm-bonus-shot-seed", 0, 0)
+	shooter := joinBare(a)
+	other := joinBare(a) // must NOT be credited — the shooter fired, not this ship
+	other.Ship.Pos = Vec3{X: -9999}
+
+	shooter.Ship.Missiles = 0 // below max, so a missile pickup is visibly effective
+	bonusPos := Vec3{X: 400}
+	a.world.Bonuses.List = append(a.world.Bonuses.List, &Bonus{
+		Kind: "missiles", Position: bonusPos, Radius: k.Bonuses["radius"], Life: 999,
+	})
+
+	a.world.Projectiles.Spawn(bonusPos, Vec3{}, "player", 3.0, nil, kindBolt, shooter.ID)
+	evs := a.dmProjectiles()
+
+	idx := (a.world.Projectiles.Cursor - 1 + a.world.Projectiles.Max) % a.world.Projectiles.Max
+	if a.world.Projectiles.Ttl[idx] != 0 {
+		t.Fatalf("bolt survived hitting a bonus: ttl=%v", a.world.Projectiles.Ttl[idx])
+	}
+	if len(a.world.Bonuses.List) != 0 {
+		t.Fatalf("bonus was not collected by the shot: %+v", a.world.Bonuses.List)
+	}
+	if shooter.Ship.Missiles != 0+int(k.Bonuses["missileAmount"]) {
+		t.Fatalf("shooter's missiles = %v, want %v (0 + missileAmount)", shooter.Ship.Missiles, int(k.Bonuses["missileAmount"]))
+	}
+	if other.Ship.Missiles != int(k.Player.MaxMissiles) {
+		t.Fatalf("the wrong player was credited: other.Missiles = %v, want untouched default %v", other.Ship.Missiles, int(k.Player.MaxMissiles))
+	}
+	found := false
+	for _, e := range evs {
+		if e.Kind == "bonusPicked" && e.Bonus == "missiles" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no bonusPicked event: %+v", evs)
+	}
+}

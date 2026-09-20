@@ -145,6 +145,24 @@ func bonusHitByShot(b *Bonuses, pos Vec3) bool {
 	return false
 }
 
+// pruneDeadBonuses drops every Dead entry from b.List. stepBonuses already
+// does this for the deaths it finds itself (life expiry / its own ship
+// touch), but DM's extra collection paths — dmBonuses' multi-ship touch
+// sweep, dmProjectiles' shoot-to-collect — mark bo.Dead directly without
+// going through stepBonuses, so they call this afterward. Left unpruned, a
+// "collected" bonus would still count against Bonuses.MaxAlive (blocking a
+// new one from spawning) even though BuildSnapshot already hides it from
+// clients (it only skips Dead, it doesn't filter the slice).
+func pruneDeadBonuses(b *Bonuses) {
+	keep := b.List[:0:0]
+	for _, bo := range b.List {
+		if !bo.Dead {
+			keep = append(keep, bo)
+		}
+	}
+	b.List = keep
+}
+
 // stepBonuses returns the kind collected this tick, or "".
 func stepBonuses(b *Bonuses, ship *Ship, around Vec3, dt float64, kb Block, rng *Rng) string {
 	collected := ""

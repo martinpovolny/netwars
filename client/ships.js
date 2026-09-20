@@ -277,9 +277,24 @@ export function makeRock(radius) {
   const g = new THREE.Group();
   const geo = new THREE.IcosahedronGeometry(radius, 1);
   const pos = geo.attributes.position;
+  // IcosahedronGeometry is non-indexed: each face owns its own 3 vertices,
+  // so a shared corner between adjacent faces appears as several separate
+  // entries at (near-)identical positions. Jittering per-index independently
+  // pulls those apart — the same corner ends up in a different place for
+  // each face that touched it, tearing the mesh open at every edge (holes /
+  // "poorly put together rectangles"). Keying the jitter by the original
+  // (rounded) position instead means every vertex that started at the same
+  // corner moves together, so edges and corners stay welded.
+  const jitterByCorner = new Map();
   for (let i = 0; i < pos.count; i++) {
-    const jitter = 1 + (Math.random() - 0.5) * 0.35;
-    pos.setXYZ(i, pos.getX(i) * jitter, pos.getY(i) * jitter, pos.getZ(i) * jitter);
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const key = `${x.toFixed(2)},${y.toFixed(2)},${z.toFixed(2)}`;
+    let jitter = jitterByCorner.get(key);
+    if (jitter === undefined) {
+      jitter = 1 + (Math.random() - 0.5) * 0.35;
+      jitterByCorner.set(key, jitter);
+    }
+    pos.setXYZ(i, x * jitter, y * jitter, z * jitter);
   }
   geo.computeVertexNormals();
   const body = new THREE.Mesh(

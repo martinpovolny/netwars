@@ -513,6 +513,31 @@ func (a *Arena) dmProjectiles() []Event {
 				break
 			}
 		}
+
+		// a shot that didn't reach a player can still collect a bonus — co-op
+		// has this via bonusHitByShot (weapons.go's Projectiles.Step), but
+		// dmProjectiles is its own separate loop and never called it, so
+		// shooting a bonus in DM/TDM silently did nothing. Unlike co-op
+		// (which always credits its one "focus" ship), this credits whoever
+		// actually fired the shot — DM has no single ship to default to, and
+		// crediting the wrong player's hull/missiles would be its own bug.
+		if pr.Ttl[i] > 0 {
+			for _, bo := range a.world.Bonuses.List {
+				if bo.Dead {
+					continue
+				}
+				if pr.Pos[i].DistanceToSq(bo.Position) < bo.Radius*bo.Radius {
+					bo.Dead = true
+					pr.Ttl[i] = 0
+					if owner != nil {
+						applyBonus(owner.Ship, bo.Kind, a.k)
+					}
+					evs = append(evs, Event{Kind: "bonusPicked", Bonus: bo.Kind})
+					pruneDeadBonuses(a.world.Bonuses)
+					break
+				}
+			}
+		}
 	}
 
 	// bolt-vs-missile: fly straight at an incoming missile and shoot it
@@ -575,18 +600,7 @@ func (a *Arena) dmBonuses() []Event {
 			}
 		}
 	}
-	// stepBonuses already pruned Dead entries it found itself, but this
-	// sweep's own picks (marked Dead just above) still need removing —
-	// otherwise they'd linger in the list forever: still counted against
-	// MaxAlive (blocking new spawns) and, since BuildSnapshot only skips
-	// Dead rather than filtering the slice, kept getting sent to clients.
-	keep := a.world.Bonuses.List[:0:0]
-	for _, bo := range a.world.Bonuses.List {
-		if !bo.Dead {
-			keep = append(keep, bo)
-		}
-	}
-	a.world.Bonuses.List = keep
+	pruneDeadBonuses(a.world.Bonuses)
 	return evs
 }
 
