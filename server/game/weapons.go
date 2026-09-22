@@ -97,6 +97,19 @@ func (p *Projectiles) Step(dt float64, w *World) []Event {
 					p.Vel[i].Lerp(desired, 1-math.Pow(kw["missileGuideRate"], dt))
 				}
 			}
+		} else if p.Kind[i] == kindBolt && p.Team[i] == teamPlayer && p.Target[i] != nil {
+			// the "guided cannon" bonus (SP/co-op only — see spawnBonus's
+			// allowGuided): a much gentler, shorter-lived homing than a
+			// missile — softer guideRate, and it only ever lasts as long as
+			// a bolt's own (much shorter) ttl already does.
+			if p.Age[i] > kw["guidedBoltGuideDelay"] {
+				tgt := p.Target[i]
+				if !tgt.GuideDead() {
+					desired := tgt.GuidePos()
+					desired.Sub(p.Pos[i]).Normalize().MultiplyScalar(p.Vel[i].Length())
+					p.Vel[i].Lerp(desired, 1-math.Pow(kw["guidedBoltGuideRate"], dt))
+				}
+			}
 		}
 		p.Pos[i].AddScaledVector(p.Vel[i], dt)
 

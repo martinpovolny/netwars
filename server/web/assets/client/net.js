@@ -384,8 +384,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
     const pos = ev.pos ? new THREE.Vector3(ev.pos[0], ev.pos[1], ev.pos[2]) : player.position;
     switch (ev.kind) {
       case 'bonusPicked':
-        hud.flash(ev.bonus === 'missiles' ? '+6 MISSILES' : '+35 HULL', 1.4);
-        explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : 0x3ad0ff);
+        hud.flash(ev.bonus === 'missiles' ? '+6 MISSILES' : ev.bonus === 'guided' ? `+${K.bonuses.guidedRounds} GUIDED ROUNDS` : '+35 HULL', 1.4);
+        explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : ev.bonus === 'guided' ? 0xb26bff : 0x3ad0ff);
         audio.pickup();
         break;
       // ram/playerHit are broadcast to every player in the arena with no
@@ -492,6 +492,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     }
     player.hull = sh.hull;
     player.missiles = sh.msl;
+    player.guidedShots = sh.gs || 0;
     player.alive = sh.alive;
     if (first) {
       inputLog.length = 0;

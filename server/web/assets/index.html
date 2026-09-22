@@ -58,6 +58,8 @@
   /* top-right: score + missiles */
   #tr { position: absolute; top: 14px; right: 20px; text-align: right; font-size: 15px; line-height: 1.5; }
   #tr .v { color: #ff8; }
+  #guided.hidden { display: none; }
+  #guided .guided-v { color: #b26bff; }
 
   /* bottom-left: velocity gauge (hull is the top bar + hit vignette) */
   #gauges { position: absolute; left: 20px; bottom: 20px; display: flex; gap: 14px; align-items: flex-end; }
@@ -408,6 +410,7 @@
   <div id="tr">
     <div>Score: <span class="v" id="score">000000</span></div>
     <div>Missiles: <span class="v" id="missiles">20</span></div>
+    <div id="guided" class="hidden">Guided: <span class="v guided-v" id="guided-shots">0</span></div>
   </div>
 
   <div id="gauges">

@@ -47,7 +47,9 @@
     "missileMaxSpeed": 1500,
     "missileGuideDelay": 0.35,
     "missileGuideRate": 0.01,
-    "missileInterceptRadius": 20
+    "missileInterceptRadius": 20,
+    "guidedBoltGuideDelay": 0.05,
+    "guidedBoltGuideRate": 0.25
   },
 
   "enemy": {
@@ -60,6 +62,8 @@
     "radiusPerBulk": 8,
     "shipScale": 2.0,
     "maxAlive": 5,
+    "spawnGapMin": 0.6,
+    "spawnGapRange": 0.6,
     "spawnMin": 1500,
     "spawnRange": 800,
     "podClearance": 900,
@@ -121,7 +125,9 @@
     "missileAmount": 6,
     "repairAmount": 35,
     "wantRepairBelow": 0.6,
-    "wantMissilesBelow": 0.4
+    "wantMissilesBelow": 0.4,
+    "guidedChance": 0.2,
+    "guidedRounds": 50
   },
 
   "sim": {

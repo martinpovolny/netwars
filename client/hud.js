@@ -21,6 +21,8 @@ export class HUD {
   constructor() {
     this.score = document.getElementById('score');
     this.missiles = document.getElementById('missiles');
+    this.guided = document.getElementById('guided');
+    this.guidedShots = document.getElementById('guided-shots');
     this.vel = document.getElementById('vel-fill');
     this.boostGauge = document.getElementById('boost-gauge');
     this.boostFill = document.getElementById('boost-fill');
@@ -83,6 +85,9 @@ export class HUD {
   update(dt, player, enemies, pods, score, radar, lock) {
     this.score.textContent = String(score).padStart(6, '0');
     this.missiles.textContent = player.missiles;
+    const guided = player.guidedShots || 0;
+    this.guided.classList.toggle('hidden', guided <= 0);
+    if (guided > 0) this.guidedShots.textContent = guided;
     this.vel.style.height = Math.min(100, 100 * player.speed() / player.maxSpeed) + '%';
     if (this.boostFill) {
       const frac = Math.max(0, Math.min(1, player.boostFuel / player.boostFuelMax));

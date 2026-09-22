@@ -230,7 +230,7 @@ export function makeSniper(accent = 0x3a6bff, bulk = 1.2) {
 // Collectible bonus pod. kind: 'missiles' (cyan) | 'repair' (green).
 // A slowly spinning octahedron with a bright inner core and an orbit ring.
 export function makeBonus(kind) {
-  const col = kind === 'repair' ? 0x2fe06a : 0x3ad0ff;
+  const col = kind === 'repair' ? 0x2fe06a : kind === 'guided' ? 0xb26bff : 0x3ad0ff;
   const g = new THREE.Group();
 
   const shell = new THREE.Mesh(
@@ -254,12 +254,20 @@ export function makeBonus(kind) {
   g.add(ring);
   g.userData.ring = ring;
 
-  // a tiny glyph so the two kinds read differently up close
+  // a tiny glyph so the kinds read differently up close
   const glyphMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   if (kind === 'repair') {
     const v = new THREE.Mesh(new THREE.BoxGeometry(3.5, 15, 3.5), glyphMat);
     const h = new THREE.Mesh(new THREE.BoxGeometry(15, 3.5, 3.5), glyphMat);
     g.add(v, h);
+  } else if (kind === 'guided') {
+    // a crosshair — two thin crossed bars plus a small ring, reading as a
+    // targeting reticle rather than the missile's straight rocket glyph
+    const v = new THREE.Mesh(new THREE.BoxGeometry(2.2, 15, 2.2), glyphMat);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(15, 2.2, 2.2), glyphMat);
+    g.add(v, h);
+    const reticle = new THREE.Mesh(new THREE.TorusGeometry(6, 1, 6, 16), glyphMat);
+    g.add(reticle);
   } else {
     const rocket = new THREE.Mesh(new THREE.ConeGeometry(3.5, 16, 6), glyphMat);
     rocket.rotation.x = -Math.PI / 2;

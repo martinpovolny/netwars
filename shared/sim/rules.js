@@ -58,14 +58,21 @@ export function stepPods(pods, dt) {
 // ------------------------------------------------------------- bonuses ------
 
 // bonuses: { list:[bonusState], timer, maxAlive }
-// bonusState: { kind:'missiles'|'repair', position, velocity, radius, life, dead, _collected }
-function spawnBonus(bonuses, around, player, K, rng) {
-  const wantRepair = player.hull < player.maxHull * K.wantRepairBelow;
-  const wantMsl = player.missiles < player.maxMissiles * K.wantMissilesBelow;
+// bonusState: { kind:'missiles'|'repair'|'guided', position, velocity, radius, life, dead, _collected }
+// allowGuided is false for deathmatch/tdm (Arena.dmBonuses passes it through
+// server/game/rules.go's twin) — the guided-cannon bonus only ever appears
+// in SP/co-op. SP always passes true (see world.js's only caller).
+function spawnBonus(bonuses, around, player, K, rng, allowGuided) {
   let kind;
-  if (wantRepair && !wantMsl) kind = 'repair';
-  else if (wantMsl && !wantRepair) kind = 'missiles';
-  else kind = rng() < 0.5 ? 'repair' : 'missiles';
+  if (allowGuided && rng() < K.guidedChance) {
+    kind = 'guided';
+  } else {
+    const wantRepair = player.hull < player.maxHull * K.wantRepairBelow;
+    const wantMsl = player.missiles < player.maxMissiles * K.wantMissilesBelow;
+    if (wantRepair && !wantMsl) kind = 'repair';
+    else if (wantMsl && !wantRepair) kind = 'missiles';
+    else kind = rng() < 0.5 ? 'repair' : 'missiles';
+  }
 
   bonuses.list.push({
     kind,
@@ -89,13 +96,13 @@ export function bonusHitByShot(bonuses, pos) {
 }
 
 // returns { kind } for a bonus collected this step, or null
-export function stepBonuses(bonuses, player, around, dt, K, rng = Math.random) {
+export function stepBonuses(bonuses, player, around, dt, K, rng = Math.random, allowGuided = true) {
   let collected = null;
 
   bonuses.timer -= dt;
   if (bonuses.timer <= 0 && bonuses.list.length < K.maxAlive) {
     bonuses.timer = K.respawnMin + rng() * K.respawnRange;
-    spawnBonus(bonuses, around, player, K, rng);
+    spawnBonus(bonuses, around, player, K, rng, allowGuided);
   }
 
   for (const b of bonuses.list) {

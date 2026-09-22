@@ -134,8 +134,9 @@ function handleWorldEvent(ev) {
   switch (ev.kind) {
     case 'bonusPicked':
       if (ev.bonus === 'missiles') { player.giveMissiles(6); hud.flash('+6 MISSILES', 1.4); }
+      else if (ev.bonus === 'guided') { player.guidedShots = K.bonuses.guidedRounds; hud.flash(`+${K.bonuses.guidedRounds} GUIDED ROUNDS`, 1.4); }
       else { player.repair(35); hud.flash('+35 HULL', 1.4); }
-      explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : 0x3ad0ff);
+      explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : ev.bonus === 'guided' ? 0xb26bff : 0x3ad0ff);
       audio.pickup();
       break;
     case 'ram':

@@ -102,22 +102,28 @@ func makeBonuses(kb Block, rng *Rng) *Bonuses {
 	}
 }
 
-// spawnBonus draw order: kind (0 or 1 — only when both/neither wanted), _t(1),
-// dir(2)+mag(1), dir(2)+mag(1).
-func spawnBonus(b *Bonuses, around Vec3, ship *Ship, kb Block, rng *Rng) {
-	wantRepair := ship.Hull < ship.MaxHull*kb["wantRepairBelow"]
-	wantMsl := float64(ship.Missiles) < ship.MaxMissiles*kb["wantMissilesBelow"]
+// spawnBonus draw order: [guided(1) if allowGuided] then either kind(0 or 1 —
+// only when both/neither wanted) or nothing (guided already chose), _t(1),
+// dir(2)+mag(1), dir(2)+mag(1). allowGuided is false for deathmatch/tdm (see
+// Arena.dmBonuses) — the guided-cannon bonus only ever appears in SP/co-op.
+func spawnBonus(b *Bonuses, around Vec3, ship *Ship, kb Block, rng *Rng, allowGuided bool) {
 	var kind string
-	switch {
-	case wantRepair && !wantMsl:
-		kind = "repair"
-	case wantMsl && !wantRepair:
-		kind = "missiles"
-	default:
-		if rng.Float64() < 0.5 {
+	if allowGuided && rng.Float64() < kb["guidedChance"] {
+		kind = "guided"
+	} else {
+		wantRepair := ship.Hull < ship.MaxHull*kb["wantRepairBelow"]
+		wantMsl := float64(ship.Missiles) < ship.MaxMissiles*kb["wantMissilesBelow"]
+		switch {
+		case wantRepair && !wantMsl:
 			kind = "repair"
-		} else {
+		case wantMsl && !wantRepair:
 			kind = "missiles"
+		default:
+			if rng.Float64() < 0.5 {
+				kind = "repair"
+			} else {
+				kind = "missiles"
+			}
 		}
 	}
 	t := rng.Float64() * 6
@@ -164,13 +170,13 @@ func pruneDeadBonuses(b *Bonuses) {
 }
 
 // stepBonuses returns the kind collected this tick, or "".
-func stepBonuses(b *Bonuses, ship *Ship, around Vec3, dt float64, kb Block, rng *Rng) string {
+func stepBonuses(b *Bonuses, ship *Ship, around Vec3, dt float64, kb Block, rng *Rng, allowGuided bool) string {
 	collected := ""
 
 	b.Timer -= dt
 	if b.Timer <= 0 && len(b.List) < b.MaxAlive {
 		b.Timer = kb["respawnMin"] + rng.Float64()*kb["respawnRange"]
-		spawnBonus(b, around, ship, kb, rng)
+		spawnBonus(b, around, ship, kb, rng, allowGuided)
 	}
 
 	for _, bo := range b.List {

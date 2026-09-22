@@ -29,7 +29,7 @@ func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Player) pro
 		Ship: proto.ShipS{
 			Pos: pv(self.Pos), Vel: pv(self.Vel), Quat: pq(self.Quat),
 			Hull: self.Hull, Missiles: self.Missiles, Alive: self.Alive,
-			BoostFuel: self.BoostFuel,
+			BoostFuel: self.BoostFuel, GuidedShots: self.GuidedShots,
 		},
 	}
 	for _, o := range others {

@@ -160,6 +160,7 @@ func resetShip(s *Ship, k *Constants) {
 	s.HitPulse = 0
 	s.Invuln = k.Player.InvulnOnReset
 	s.Alive = true
+	s.GuidedShots = 0
 }
 
 func (a *Arena) run(ctx context.Context) {
@@ -579,7 +580,8 @@ func (a *Arena) dmBonuses() []Event {
 	var evs []Event
 	focus := a.players[a.order[0]].Ship
 	around := a.actionCentroid("")
-	if kind := stepBonuses(a.world.Bonuses, focus, around, tickDT, a.k.Bonuses, a.world.Rng); kind != "" {
+	// allowGuided=false: the guided-cannon bonus is SP/co-op only, never DM.
+	if kind := stepBonuses(a.world.Bonuses, focus, around, tickDT, a.k.Bonuses, a.world.Rng, false); kind != "" {
 		applyBonus(focus, kind, a.k)
 		evs = append(evs, Event{Kind: "bonusPicked", Bonus: kind})
 	}
@@ -921,6 +923,27 @@ func (a *Arena) fireWeapons(p *Player) {
 	p.gunCd -= tickDT
 	if p.wantGun && p.gunCd <= 0 {
 		p.gunCd = kp.GunInterval
+		// guided cannon (SP/co-op only — s.GuidedShots is never set in
+		// deathmatch, see spawnBonus's allowGuided): lock the nearest live
+		// enemy for both bolts of this shot and spend one of the rounds,
+		// even if there's nothing in the fleet to lock onto right now.
+		var target guideTarget
+		if s.GuidedShots > 0 {
+			var best *Enemy
+			bd := math.Inf(1)
+			for _, e := range a.world.Fleet.List {
+				if e.Dead {
+					continue
+				}
+				if d := e.Position.DistanceToSq(s.Pos); d < bd {
+					bd, best = d, e
+				}
+			}
+			if best != nil {
+				target = best
+			}
+			s.GuidedShots--
+		}
 		for _, side := range [2]float64{-1, 1} {
 			pos := s.Pos
 			pos.AddScaledVector(rightV, side*kp.GunHardpoint.Side)
@@ -928,7 +951,7 @@ func (a *Arena) fireWeapons(p *Player) {
 			pos.AddScaledVector(fwdV, kp.GunHardpoint.Fwd)
 			vel := s.Vel
 			vel.AddScaledVector(fwdV, kp.CannonMuzzle)
-			a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.BoltTtl, nil, kindBolt, p.ID)
+			a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.BoltTtl, target, kindBolt, p.ID)
 		}
 	}
 	p.wantGun = false

@@ -106,18 +106,19 @@ type Vec3 [3]float64
 type Quat [4]float64
 
 type ShipS struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"n,omitempty"`
-	Pos       Vec3    `json:"p"`
-	Vel       Vec3    `json:"v"`
-	Quat      Quat    `json:"q"`
-	Hull      float64 `json:"hull"`
-	MaxHull   float64 `json:"maxHull,omitempty"`
-	Missiles  int     `json:"msl"`
-	Alive     bool    `json:"alive"`
-	BoostFuel float64 `json:"bf"`           // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
-	Rtt       float64 `json:"rt,omitempty"` // others only — that player's own self-reported RTT to the server, ms
-	Team      int     `json:"tm,omitempty"` // 2-team deathmatch only: 0 or 1, which team this ship belongs to
+	ID          string  `json:"id"`
+	Name        string  `json:"n,omitempty"`
+	Pos         Vec3    `json:"p"`
+	Vel         Vec3    `json:"v"`
+	Quat        Quat    `json:"q"`
+	Hull        float64 `json:"hull"`
+	MaxHull     float64 `json:"maxHull,omitempty"`
+	Missiles    int     `json:"msl"`
+	Alive       bool    `json:"alive"`
+	BoostFuel   float64 `json:"bf"`           // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
+	Rtt         float64 `json:"rt,omitempty"` // others only — that player's own self-reported RTT to the server, ms
+	Team        int     `json:"tm,omitempty"` // 2-team deathmatch only: 0 or 1, which team this ship belongs to
+	GuidedShots int     `json:"gs,omitempty"` // self only — rounds left on the guided-cannon bonus (SP/co-op only, always 0 in deathmatch)
 }
 
 type EnemyS struct {
