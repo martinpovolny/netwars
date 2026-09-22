@@ -38,6 +38,11 @@ const LANCE_CHARGE = 0.45;      // windup the player can read + juke
 const LANCE_TTL = 3.0;
 const LANCE_CONE = 0.955;       // ~17° firing cone (looser than a bolt's 0.985)
 
+// "aiFireDefaultAimDot" in constants.json — how well-aligned the player
+// already has to be for an opportunistic shot: any enemy should shoot at
+// the player if it happens to have a nice shot while doing its task.
+const OPPORTUNISTIC_AIM_DOT = 0.985;
+
 // Where to aim so a bolt of speed ENEMY_BOLT_SPEED meets a target at `tpos`
 // moving at `tvel`. Exact closed form: with d = tpos - from and s the bolt
 // speed, solve |d + tvel·t| = s·t, i.e. the quadratic
@@ -67,6 +72,28 @@ function nearestPod(pos, pods) {
   let bd = Infinity;
   for (const p of pods.list) {
     if (p.dead) continue;
+    const d = pos.distanceToSquared(p.position);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+
+// nearestPod but for thief targeting only: also skips any pod another thief
+// already has captor on. thief() now claims a pod (sets captor) the moment
+// it's picked, not just once physically grabbed — without this exclusion,
+// nearestPod couldn't tell a claimed pod from a free one, so two thieves
+// would both target the same one, and a second thief re-picking away from an
+// already-captured pod would often just land back on that same pod (still
+// "nearest") and steal the captor role mid-haul. With two thieves
+// alternately overwriting _loot.position from their own diverging haulDir
+// each tick, the pod's apparent distance from either one's haulStart could
+// spike well past normal, tripping the 2600-unit escape check far sooner
+// than a real haul ever would.
+function nearestUnclaimedPod(pos, pods) {
+  let best = null;
+  let bd = Infinity;
+  for (const p of pods.list) {
+    if (p.dead || p.captor) continue;
     const d = pos.distanceToSquared(p.position);
     if (d < bd) { bd = d; best = p; }
   }
@@ -136,6 +163,27 @@ function tryFire(e, dt, targetPos, ctx, aimDot = 0.985, targetVel = null) {
   ctx.fx?.enemyLaser?.();
 }
 
+const _opp = new Vector3();
+
+// Reports { pos, vel, aimDot } if the player is a "nice shot" this enemy
+// already happens to have — alive, in range, and already within
+// OPPORTUNISTIC_AIM_DOT of dead-on — without it changing what it's actually
+// doing (still chasing its pod, hauling, etc). Callers with a primary
+// target fall back to it when this returns null; thief's haul phase (no
+// primary target at all — it doesn't chase pods while already hauling one)
+// just skips firing that tick. Any enemy should shoot at the player if it
+// happens to have a nice shot while doing its task.
+function pickOpportunisticTarget(e, ctx) {
+  const { player } = ctx;
+  if (!player.alive) return null;
+  const d = _opp.copy(player.position).sub(e.position);
+  const dist = d.length();
+  if (dist <= 1e-3 || dist > e.stats.fireRange) return null;
+  d.multiplyScalar(1 / dist);
+  if (_f.dot(d) < OPPORTUNISTIC_AIM_DOT) return null;
+  return { pos: player.position, vel: player.velocity, aimDot: OPPORTUNISTIC_AIM_DOT };
+}
+
 // --- behaviours ------------------------------------------------------------
 function brawler(e, dt, ctx) {
   const { player } = ctx;
@@ -157,7 +205,9 @@ function brawler(e, dt, ctx) {
     brake = 0.4;
   }
   fly(e, dt, dir, { throttle: dist > 340 ? 1 : 0.7, brake });
-  tryFire(e, dt, tgt, ctx, 0.985, tgt === player.position ? player.velocity : null);
+  const opp = pickOpportunisticTarget(e, ctx);
+  if (opp) tryFire(e, dt, opp.pos, ctx, opp.aimDot, opp.vel);
+  else tryFire(e, dt, tgt, ctx, 0.985, tgt === player.position ? player.velocity : null);
 }
 
 function strafer(e, dt, ctx) {
@@ -168,7 +218,9 @@ function strafer(e, dt, ctx) {
 
   if (e.state === 'run') {
     fly(e, dt, to.clone(), { throttle: 1, turn: e.stats.turn * 0.85, vmax: e.vmax * 1.15 });
-    tryFire(e, dt, e.aimPos, ctx, 0.95);
+    const opp = pickOpportunisticTarget(e, ctx);
+    if (opp) tryFire(e, dt, opp.pos, ctx, opp.aimDot, opp.vel);
+    else tryFire(e, dt, e.aimPos, ctx, 0.95);
     if (dist < 240 || e.stateT > 5) {
       e.state = 'break';
       e.stateT = 0;
@@ -251,10 +303,15 @@ function sniper(e, dt, ctx) {
       e.holdFor = 5 + _rng() * 3;
     }
   } else {
-    // hold and track the intercept, not the player's current spot
+    // hold and track the intercept, not the player's current spot. Guardian
+    // already has the highest base turn of any type (turnFactor 32 vs
+    // 20-24) — a 1.6x multiplier on top of that let it snap-aim onto the
+    // player almost instantly, making it un-juke-able despite the
+    // "telegraphed" lance charge; every other behavior's multiplier here is
+    // <= 0.95 (see fly() calls above/below).
     const aim = leadPoint(e.position, player.position, player.velocity, _lead, LANCE_SPEED);
     const d = _d.copy(aim).sub(e.position).normalize();
-    fly(e, dt, d, { throttle: 0, brakeAll: 1.2, turn: e.stats.turn * 1.6 });
+    fly(e, dt, d, { throttle: 0, brakeAll: 1.2, turn: e.stats.turn * 0.9 });
     sniperFire(e, dt, ctx);
     e.stateT += dt;
     if (e.stateT > e.holdFor || toPlayer < 360) {
@@ -293,8 +350,9 @@ function thief(e, dt, ctx) {
   const { player, pods } = ctx;
   if (!e._loot || e._loot.dead || (e._loot.captor && e._loot.captor !== e)) {
     if (e.state === 'haul') e.state = 'approach';
-    e._loot = nearestPod(e.position, pods);
+    e._loot = nearestUnclaimedPod(e.position, pods);
     if (!e._loot) { brawler(e, dt, ctx); return; }
+    e._loot.captor = e; // claim it now, at pick time — see nearestUnclaimedPod
   }
   const to = _d.copy(e._loot.position).sub(e.position);
   const dist = to.length();
@@ -305,8 +363,7 @@ function thief(e, dt, ctx) {
     fly(e, dt, to.clone(), { throttle: closing ? 0.15 : 1, brakeAll: closing ? 0.8 : 0 });
     tryFire(e, dt, player.position, ctx, 0.99, player.alive ? player.velocity : null);
     if (dist < e.radius + e._loot.radius + 10 && e.velocity.length() < 80) {
-      e.state = 'haul';
-      e._loot.captor = e;
+      e.state = 'haul'; // captor was already claimed at pick time, above
       e.haulDir.copy(e._loot.position).sub(pods.centroid);
       if (e.haulDir.lengthSq() < 1) e.haulDir.copy(to).negate();
       e.haulDir.normalize();
@@ -317,6 +374,10 @@ function thief(e, dt, ctx) {
     _f.copy(FWD).applyQuaternion(e.quaternion);
     e._loot.position.copy(e.position).addScaledVector(_f, e.radius + e._loot.radius);
     e._loot.velocity.set(0, 0, 0);
+    // no pod to fall back to while hauling — an opportunistic shot at the
+    // player or nothing at all this tick.
+    const opp = pickOpportunisticTarget(e, ctx);
+    if (opp) tryFire(e, dt, opp.pos, ctx, opp.aimDot, opp.vel);
     if (e._loot.position.distanceTo(e.haulStart) > 2600) {
       e._loot.dead = true;
       e._loot.captor = null;
