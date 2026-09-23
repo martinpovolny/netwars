@@ -16,12 +16,14 @@ import { Weapons } from './weapons.js';
 import { Enemies } from './enemies.js';
 import { Pods } from './pods.js';
 import { Bonuses } from './bonuses.js';
+import { Meteorites } from './meteorites.js';
 import { Explosions } from './explosions.js';
 import { Environment } from './render/environment.js';
 import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
 import { ScreenShake } from './shake.js';
+import { Settings } from './settings.js';
 import { ENEMY_TYPES } from './levels.js';
 import { makePlayerShip } from './ships.js';
 import { showFatalError } from './webgl.js';
@@ -120,11 +122,13 @@ function runOnline({ ws, welcome }, { mode, name }) {
   const enemies = new Enemies(scene);
   const pods = new Pods(scene);
   const bonuses = new Bonuses(scene);
+  const meteorites = new Meteorites(scene);
   const environment = new Environment(scene);
   const radar = new Radar();
   const orient = new OrientationInset();
   const hud = new HUD();
   const shake = new ScreenShake();
+  const settings = new Settings(audio, environment);
 
   // deathmatch match-over overlay — only ever shown/hidden here, driven by
   // the server's matchOver/matchStart events (frame loop just ticks the
@@ -139,6 +143,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     fleet: { list: [], level: welcome.snapshot.level || 1, goals: {} },   // goals: M2.6 (server sends per-class remaining)
     pods: { list: [], centroid: new THREE.Vector3(), total: K.pods.perLevel, get alive() { return this.list.length; } },
     bonuses: { list: [] },
+    rocks: { list: [] }, // deathmatch/tdm only; stays empty in coop
     projectiles: makeProjStore(K.weapons.max, welcome.playerId),
     fsm: { state: welcome.snapshot.fsm || 'playing' },
     score: welcome.snapshot.score || 0,
@@ -153,6 +158,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
   enemies.attach(world.fleet);
   pods.attach(world.pods);
   bonuses.attach(world.bonuses);
+  meteorites.attach(world.rocks);
   weapons.attach(world.projectiles);
 
   // other players' ships — a diff-rendered mesh + a radar-facing record per
@@ -277,17 +283,21 @@ function runOnline({ ws, welcome }, { mode, name }) {
   applySnapshot(welcome.snapshot, true);
 
   window.__nw = {
-    online: true, scene, camera, player, world, enemies, pods, bonuses, weapons,
-    explosions, environment, radar, input, audio, hud, ws, playerId: welcome.playerId,
+    online: true, scene, camera, player, world, enemies, pods, bonuses, meteorites, weapons,
+    explosions, environment, radar, input, audio, hud, settings, ws, playerId: welcome.playerId,
     paused: false, get score() { return world.score; }, get state() { return world.fsm.state; },
   };
 
   canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    // settings panel first: while it's open, up/down/left/right/escape
+    // belong to it, not flight or any other single-key toggle below.
+    if (settings.handleKey(e.code)) return;
     if (e.code === 'Enter') { toggleFullscreen(); return; }
     if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
     if (e.code === 'KeyL') { hud.flash(environment.toggleConstellations() ? 'CONSTELLATIONS ON' : 'CONSTELLATIONS OFF', 1.2); return; }
+    if (e.code === 'KeyO') { settings.toggle(); return; }
     if (e.code === 'KeyH') hud.showHelp(4);
     if (e.code === 'BracketRight' || e.code === 'Equal') { radar.zoom(1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
     if (e.code === 'BracketLeft' || e.code === 'Minus') { radar.zoom(-1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
@@ -339,19 +349,26 @@ function runOnline({ ws, welcome }, { mode, name }) {
   let seq = 0;
   function sendInput(dt) {
     if (ws.readyState !== WebSocket.OPEN) return;
+    // the settings panel reuses arrow keys for its own navigation — a
+    // network game can't pause the server, so instead we just stop sending
+    // real flight/fire input while it's open (a neutral frame, not the
+    // stale last-held one) and let the ship coast.
+    const suppress = settings.isOpen;
     let roll = 0;
-    if (input.has('KeyA')) roll += 1;
-    if (input.has('KeyD')) roll -= 1;
     let thrust = 0;
-    if (input.has('KeyW') || input.has('ArrowUp')) thrust += 1;
-    if (input.has('KeyS') || input.has('ArrowDown')) thrust -= 1;
+    if (!suppress) {
+      if (input.has('KeyA')) roll += 1;
+      if (input.has('KeyD')) roll -= 1;
+      if (input.has('KeyW') || input.has('ArrowUp')) thrust += 1;
+      if (input.has('KeyS') || input.has('ArrowDown')) thrust -= 1;
+    }
     // the exact control frame the server will integrate — logged so we can
     // replay the ones it hasn't acked yet on top of the next snapshot
     const ctrl = {
       intentX: player.intent.x, intentY: player.intent.y, roll, thrust,
-      brake: input.has('KeyC'),
-      boost: input.has('ShiftLeft') || input.has('ShiftRight'),
-      stop: input.has('KeyX'),
+      brake: !suppress && input.has('KeyC'),
+      boost: !suppress && (input.has('ShiftLeft') || input.has('ShiftRight')),
+      stop: !suppress && input.has('KeyX'),
     };
     const n = ++seq;
     inputLog.push({ seq: n, ctrl, dt });
@@ -365,8 +382,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
       type: 'input', seq: n, t: performance.now(),
       ix: ctrl.intentX, iy: ctrl.intentY, roll, thrust,
       brake: ctrl.brake, boost: ctrl.boost, stop: ctrl.stop,
-      gun: input.has('Space') || input.mouseFire,
-      msl: input.has('KeyF') || input.mouseRight,
+      gun: !suppress && (input.has('Space') || input.mouseFire),
+      msl: !suppress && (input.has('KeyF') || input.mouseRight),
       mt, mp,
       // self-reported RTT so other players can see it next to our name —
       // ping/pong only round-trips this client<->server, it never reaches
@@ -380,8 +397,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
     const pos = ev.pos ? new THREE.Vector3(ev.pos[0], ev.pos[1], ev.pos[2]) : player.position;
     switch (ev.kind) {
       case 'bonusPicked':
-        hud.flash(ev.bonus === 'missiles' ? '+6 MISSILES' : '+35 HULL', 1.4);
-        explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : 0x3ad0ff);
+        hud.flash(ev.bonus === 'missiles' ? '+6 MISSILES' : ev.bonus === 'guided' ? `+${K.bonuses.guidedRounds} GUIDED ROUNDS` : '+35 HULL', 1.4);
+        explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : ev.bonus === 'guided' ? 0xb26bff : 0x3ad0ff);
         audio.pickup();
         break;
       // ram/playerHit are broadcast to every player in the arena with no
@@ -390,6 +407,10 @@ function runOnline({ ws, welcome }, { mode, name }) {
       // the explosion FX below stay unconditional: a collision or impact is
       // reasonable for anyone nearby to see/hear, "you got hurt" isn't.
       case 'ram': explosions.blast(pos, 0xffcc55); audio.boom(); hud.flash('COLLISION', 1.2); break;
+      // rockHit fires for both a ship bouncing off a meteorite and a shot
+      // absorbed by one — same "anyone nearby can see/hear it" broadcast
+      // reasoning as ram/playerHit above, no victim id to gate on.
+      case 'rockHit': explosions.spark(pos, 0x9a8a76); audio.boom(); break;
       case 'podStrikeKill': explosions.blast(pos, 0xff5ad0); audio.boom(); break;
       case 'enemyHit': explosions.hit(pos, ev.isMissile ? 0xffd23a : 0xbfe8ff); break;
       case 'enemyKill': explosions.blast(pos, 0xffcc55); audio.boom(); break;
@@ -484,6 +505,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     }
     player.hull = sh.hull;
     player.missiles = sh.msl;
+    player.guidedShots = sh.gs || 0;
     player.alive = sh.alive;
     if (first) {
       inputLog.length = 0;
@@ -575,6 +597,22 @@ function runOnline({ ws, welcome }, { mode, name }) {
       dst.tpos.set(src.p[0], src.p[1], src.p[2]);
     });
 
+    // rocks: server-authoritative only (server/game/rocks.go), same id-keyed
+    // pattern as enemies — a stable identity per rock across snapshots, not
+    // index position, even though in practice rocks never spawn/despawn
+    // mid-match the way enemies do.
+    syncById(world.rocks.list, s.rocks || [], (dst, src, isNew) => {
+      if (isNew) {
+        dst.position = new THREE.Vector3(src.p[0], src.p[1], src.p[2]);
+        dst.quaternion = new THREE.Quaternion(src.q[0], src.q[1], src.q[2], src.q[3]);
+        dst.tpos = dst.position.clone();
+        dst.tquat = dst.quaternion.clone();
+      }
+      dst.tpos.set(src.p[0], src.p[1], src.p[2]);
+      dst.tquat.set(src.q[0], src.q[1], src.q[2], src.q[3]);
+      dst.radius = src.r;
+    });
+
     // projectiles: server sends the live ones by pool index
     const pr = world.projectiles;
     pr.ttl.fill(0);
@@ -604,6 +642,10 @@ function runOnline({ ws, welcome }, { mode, name }) {
     }
     for (const p of world.pods.list) if (p.tpos) p.position.lerp(p.tpos, a);
     for (const b of world.bonuses.list) if (b.tpos) b.position.lerp(b.tpos, a);
+    for (const r of world.rocks.list) {
+      if (r.tpos) r.position.lerp(r.tpos, a);
+      if (r.tquat) r.quaternion.slerp(r.tquat, a);
+    }
   }
 
   // ---- frame loop ------------------------------------------
@@ -624,8 +666,12 @@ function runOnline({ ws, welcome }, { mode, name }) {
     dt = Math.min(dt, 0.05);
     if (!Number.isFinite(dt) || dt < 0) dt = 0;
 
-    // predict own ship (movement only; fire is server-side)
-    player.update(dt, input, predictWeapons, enemies, audio);
+    // predict own ship (movement only; fire is server-side) — skipped while
+    // the settings panel is open so its arrow-key navigation can't also
+    // steer the ship; still drain the accumulated mouse motion so aim
+    // doesn't snap the instant it closes.
+    if (settings.isOpen) input.takeMouse();
+    else player.update(dt, input, predictWeapons, enemies, audio);
     sendInput(dt);
     if (now - lastPing > 1000 && ws.readyState === WebSocket.OPEN) {
       lastPing = now;
@@ -647,6 +693,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
     enemies.update(dt);
     pods.update(dt);
     bonuses.update(dt);
+    meteorites.update();
     weapons.update(dt);
     explosions.update(dt);
     const radarMissiles = [];
@@ -660,7 +707,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
         radarMissiles.push({ position: pr.pos[mi], mine: friendly });
       }
     }
-    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles, dt);
+    radar.update(player, enemies, pods, bonuses, world.others, radarMissiles, meteorites, dt);
     if (radar.autoZoomStarted) hud.flash('SCANNER AUTO-RANGING…', 1.2);
     else if (radar.autoZoomMaxedOut) hud.flash('NO CONTACTS IN RANGE', 1.6);
     orient.update(player);

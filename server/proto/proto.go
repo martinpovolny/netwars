@@ -106,18 +106,19 @@ type Vec3 [3]float64
 type Quat [4]float64
 
 type ShipS struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"n,omitempty"`
-	Pos       Vec3    `json:"p"`
-	Vel       Vec3    `json:"v"`
-	Quat      Quat    `json:"q"`
-	Hull      float64 `json:"hull"`
-	MaxHull   float64 `json:"maxHull,omitempty"`
-	Missiles  int     `json:"msl"`
-	Alive     bool    `json:"alive"`
-	BoostFuel float64 `json:"bf"`           // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
-	Rtt       float64 `json:"rt,omitempty"` // others only — that player's own self-reported RTT to the server, ms
-	Team      int     `json:"tm,omitempty"` // 2-team deathmatch only: 0 or 1, which team this ship belongs to
+	ID          string  `json:"id"`
+	Name        string  `json:"n,omitempty"`
+	Pos         Vec3    `json:"p"`
+	Vel         Vec3    `json:"v"`
+	Quat        Quat    `json:"q"`
+	Hull        float64 `json:"hull"`
+	MaxHull     float64 `json:"maxHull,omitempty"`
+	Missiles    int     `json:"msl"`
+	Alive       bool    `json:"alive"`
+	BoostFuel   float64 `json:"bf"`           // self only — seconds of boost left, for client reconciliation (no omitempty: 0 is a real, meaningful value here)
+	Rtt         float64 `json:"rt,omitempty"` // others only — that player's own self-reported RTT to the server, ms
+	Team        int     `json:"tm,omitempty"` // 2-team deathmatch only: 0 or 1, which team this ship belongs to
+	GuidedShots int     `json:"gs,omitempty"` // self only — rounds left on the guided-cannon bonus (SP/co-op only, always 0 in deathmatch)
 }
 
 type EnemyS struct {
@@ -138,6 +139,16 @@ type PodS struct {
 type BonusS struct {
 	Kind string `json:"k"`
 	Pos  Vec3   `json:"p"`
+}
+
+// RockS is a deathmatch/tdm meteorite — server-authoritative only (see
+// server/game/rocks.go), so unlike ShipS there's nothing here for a client
+// to predict: it just renders p/q as sent, same as an enemy or a pod.
+type RockS struct {
+	ID     int     `json:"id"` // list position is stable (rocks never spawn/despawn mid-match), but an explicit id keeps the client's diff-sync pattern consistent with pods/enemies
+	Pos    Vec3    `json:"p"`
+	Quat   Quat    `json:"q"`
+	Radius float64 `json:"r"`
 }
 
 type ProjS struct {
@@ -164,6 +175,7 @@ type Snapshot struct {
 	Enemies  []EnemyS       `json:"enemies"`
 	Pods     []PodS         `json:"pods"`
 	Bonuses  []BonusS       `json:"bonuses"`
+	Rocks    []RockS        `json:"rocks,omitempty"` // deathmatch/tdm only; absent (not just empty) outside those modes
 	Proj     []ProjS        `json:"proj"`
 	Board    []ScoreS       `json:"board,omitempty"` // deathmatch scoreboard
 	TimeLeft float64        `json:"tl,omitempty"`    // deathmatch, only when a time limit is set: seconds left in the match

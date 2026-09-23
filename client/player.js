@@ -30,6 +30,7 @@ export class Player {
     this.missiles = 16;       // guided missiles (the dull cannon is unlimited)
     this.maxMissiles = 16;
     this.lockTarget = null;   // enemy currently inside the centre lock ring (set by main)
+    this.guidedShots = 0;     // "guided cannon" bonus: rounds left where each shot homes on the nearest enemy
 
     // control state (each component roughly -1..1, fraction of full deflection)
     this.mouse = new THREE.Vector2(0, 0);   // raw cursor (tiny white rect)
@@ -107,13 +108,26 @@ export class Player {
     if ((input.has('Space') || input.mouseFire) && this._gunCd <= 0) {
       this._gunCd = this.gunInterval;
       const muzzle = 1500;
+      // guided cannon bonus: lock the nearest live enemy for both bolts of
+      // this shot and spend one of the rounds, even if nothing's out there
+      // to lock onto right now.
+      let target = null;
+      if (this.guidedShots > 0) {
+        let bd = Infinity;
+        for (const e of enemies.list) {
+          if (e.dead) continue;
+          const d = e.position.distanceToSquared(this.position);
+          if (d < bd) { bd = d; target = e; }
+        }
+        this.guidedShots--;
+      }
       for (const side of [-1, 1]) {
         const p = this.position.clone()
           .addScaledVector(right, side * 18)
           .addScaledVector(up, -4)
           .addScaledVector(fwd, -10);
         const v = this.velocity.clone().addScaledVector(fwd, muzzle);
-        weapons.spawn(p, v, 'player', 2.0, null, 'bolt');
+        weapons.spawn(p, v, 'player', 2.0, target, 'bolt');
       }
       audio?.laser();
     }
@@ -158,6 +172,7 @@ export class Player {
     this.thrusting = 0;
     this.hull = this.maxHull;
     this.missiles = this.maxMissiles;
+    this.guidedShots = 0;
     this.boostFuel = this.boostFuelMax;
     this.mouse.set(0, 0);
     this.intent.set(0, 0);
@@ -172,6 +187,7 @@ export class Player {
     this.thrusting = 0;
     this.hull = this.maxHull;
     this.missiles = this.maxMissiles;
+    this.guidedShots = 0;
     this.boostFuel = this.boostFuelMax;
     this.mouse.set(0, 0);
     this.intent.set(0, 0);

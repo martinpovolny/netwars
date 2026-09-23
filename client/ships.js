@@ -230,7 +230,7 @@ export function makeSniper(accent = 0x3a6bff, bulk = 1.2) {
 // Collectible bonus pod. kind: 'missiles' (cyan) | 'repair' (green).
 // A slowly spinning octahedron with a bright inner core and an orbit ring.
 export function makeBonus(kind) {
-  const col = kind === 'repair' ? 0x2fe06a : 0x3ad0ff;
+  const col = kind === 'repair' ? 0x2fe06a : kind === 'guided' ? 0xb26bff : 0x3ad0ff;
   const g = new THREE.Group();
 
   const shell = new THREE.Mesh(
@@ -254,18 +254,63 @@ export function makeBonus(kind) {
   g.add(ring);
   g.userData.ring = ring;
 
-  // a tiny glyph so the two kinds read differently up close
+  // a tiny glyph so the kinds read differently up close
   const glyphMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   if (kind === 'repair') {
     const v = new THREE.Mesh(new THREE.BoxGeometry(3.5, 15, 3.5), glyphMat);
     const h = new THREE.Mesh(new THREE.BoxGeometry(15, 3.5, 3.5), glyphMat);
     g.add(v, h);
+  } else if (kind === 'guided') {
+    // a crosshair — two thin crossed bars plus a small ring, reading as a
+    // targeting reticle rather than the missile's straight rocket glyph
+    const v = new THREE.Mesh(new THREE.BoxGeometry(2.2, 15, 2.2), glyphMat);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(15, 2.2, 2.2), glyphMat);
+    g.add(v, h);
+    const reticle = new THREE.Mesh(new THREE.TorusGeometry(6, 1, 6, 16), glyphMat);
+    g.add(reticle);
   } else {
     const rocket = new THREE.Mesh(new THREE.ConeGeometry(3.5, 16, 6), glyphMat);
     rocket.rotation.x = -Math.PI / 2;
     g.add(rocket);
   }
 
+  return g;
+}
+
+// Grey-brown tumbling meteorite (deathmatch/tdm only, server/game/rocks.go).
+// Purely decorative jaggedness — each instance jitters its own facets
+// client-side; only position/quaternion/radius (what hits actually use) come
+// from the server, so the exact facets never need to match between clients.
+export function makeRock(radius) {
+  const g = new THREE.Group();
+  const geo = new THREE.IcosahedronGeometry(radius, 1);
+  const pos = geo.attributes.position;
+  // IcosahedronGeometry is non-indexed: each face owns its own 3 vertices,
+  // so a shared corner between adjacent faces appears as several separate
+  // entries at (near-)identical positions. Jittering per-index independently
+  // pulls those apart — the same corner ends up in a different place for
+  // each face that touched it, tearing the mesh open at every edge (holes /
+  // "poorly put together rectangles"). Keying the jitter by the original
+  // (rounded) position instead means every vertex that started at the same
+  // corner moves together, so edges and corners stay welded.
+  const jitterByCorner = new Map();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const key = `${x.toFixed(2)},${y.toFixed(2)},${z.toFixed(2)}`;
+    let jitter = jitterByCorner.get(key);
+    if (jitter === undefined) {
+      jitter = 1 + (Math.random() - 0.5) * 0.35;
+      jitterByCorner.set(key, jitter);
+    }
+    pos.setXYZ(i, x * jitter, y * jitter, z * jitter);
+  }
+  geo.computeVertexNormals();
+  const body = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color: 0x8a7a68, flatShading: true, roughness: 0.95, emissive: 0x1a1410, emissiveIntensity: 0.4 })
+  );
+  g.add(body);
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x4a4038, transparent: true, opacity: 0.5 })));
   return g;
 }
 

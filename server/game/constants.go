@@ -88,6 +88,7 @@ type Constants struct {
 	Bonuses      Block                `json:"bonuses"`
 	Sim          Block                `json:"sim"`
 	DM           Block                `json:"dm"`
+	Rocks        Block                `json:"rocks"`
 }
 
 // orderedLevels is []levelGoals — one per authored level — each an ordered

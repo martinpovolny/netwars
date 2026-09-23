@@ -58,6 +58,8 @@
   /* top-right: score + missiles */
   #tr { position: absolute; top: 14px; right: 20px; text-align: right; font-size: 15px; line-height: 1.5; }
   #tr .v { color: #ff8; }
+  #guided.hidden { display: none; }
+  #guided .guided-v { color: #b26bff; }
 
   /* bottom-left: velocity gauge (hull is the top bar + hit vignette) */
   #gauges { position: absolute; left: 20px; bottom: 20px; display: flex; gap: 14px; align-items: flex-end; }
@@ -252,6 +254,37 @@
   }
   #help.hidden { display: none; }
 
+  /* left-edge settings panel — pinned below #pause-btn, out of the way of
+     the ship/HUD. Keyboard-only: up/down selects a row, left/right cycles
+     it. Opening it is treated like a pause by the caller. */
+  #settings {
+    position: fixed; left: 16px; top: 60px; z-index: 55;
+    width: 190px; padding: 12px 14px 10px;
+    background: rgba(4, 2, 10, 0.82); border: 1px solid var(--green);
+    box-shadow: 0 0 30px rgba(53, 224, 74, 0.18);
+    font-size: 12px; letter-spacing: 1px;
+    display: none;
+  }
+  #settings.show { display: block; }
+  #settings .settings-h {
+    margin: 0 0 8px; font-size: 11px; letter-spacing: 3px; color: var(--amber);
+    text-align: center;
+  }
+  #settings .row {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 5px 6px; color: #ff8;
+  }
+  #settings .row.exit { justify-content: center; margin-top: 2px; }
+  #settings .row.sel {
+    color: var(--green); background: rgba(53, 224, 74, 0.14);
+    box-shadow: inset 3px 0 0 var(--green);
+  }
+  #settings .row .val { color: var(--amber); }
+  #settings .row.sel .val { color: var(--green); }
+  #settings .settings-hint {
+    margin-top: 8px; font-size: 9px; opacity: 0.65; text-align: center; color: #ff8;
+  }
+
   /* start screen — "/" always shows this instead of jumping into a game */
   #start {
     position: fixed; inset: 0; z-index: 1000; background: #000; overflow: hidden;
@@ -402,12 +435,23 @@
 
 <button id="pause-btn" type="button">&#10074;&#10074; Pause</button>
 
+<div id="settings">
+  <div class="settings-h">SETTINGS</div>
+  <div class="row" id="set-row-0"><span>Music</span><span class="val" id="set-val-0">ON</span></div>
+  <div class="row" id="set-row-1"><span>Music Vol</span><span class="val" id="set-val-1">100%</span></div>
+  <div class="row" id="set-row-2"><span>SFX Vol</span><span class="val" id="set-val-2">100%</span></div>
+  <div class="row" id="set-row-3"><span>Stars</span><span class="val" id="set-val-3">ON</span></div>
+  <div class="row exit" id="set-row-4">&#9668; Exit &#9658;</div>
+  <div class="settings-hint">&uarr;&darr; select &nbsp;&middot;&nbsp; &larr;&rarr; adjust</div>
+</div>
+
 <div id="hud">
   <div id="hpbar"><div class="fill" id="hpbar-fill"></div></div>
 
   <div id="tr">
     <div>Score: <span class="v" id="score">000000</span></div>
     <div>Missiles: <span class="v" id="missiles">20</span></div>
+    <div id="guided" class="hidden">Guided: <span class="v guided-v" id="guided-shots">0</span></div>
   </div>
 
   <div id="gauges">
@@ -462,7 +506,7 @@
   <div id="axis-label">Orientation</div>
   <div id="radar-label">Scanner</div>
 
-  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space cannon &nbsp;·&nbsp; F / RMB missile &nbsp;·&nbsp; [ / ] scan zoom &nbsp;·&nbsp; Enter fullscreen &nbsp;·&nbsp; M music &nbsp;·&nbsp; L constellations &nbsp;·&nbsp; P pause &nbsp;·&nbsp; H help</div>
+  <div id="help">Click to fly &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; W thrust / S reverse &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift boost &nbsp;·&nbsp; C brake &nbsp;·&nbsp; X stop &nbsp;·&nbsp; Space cannon &nbsp;·&nbsp; F / RMB missile &nbsp;·&nbsp; [ / ] scan zoom &nbsp;·&nbsp; Enter fullscreen &nbsp;·&nbsp; M music &nbsp;·&nbsp; L constellations &nbsp;·&nbsp; O settings &nbsp;·&nbsp; P pause &nbsp;·&nbsp; H help</div>
 </div>
 
 <script type="importmap">

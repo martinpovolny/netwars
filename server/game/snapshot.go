@@ -29,7 +29,7 @@ func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Player) pro
 		Ship: proto.ShipS{
 			Pos: pv(self.Pos), Vel: pv(self.Vel), Quat: pq(self.Quat),
 			Hull: self.Hull, Missiles: self.Missiles, Alive: self.Alive,
-			BoostFuel: self.BoostFuel,
+			BoostFuel: self.BoostFuel, GuidedShots: self.GuidedShots,
 		},
 	}
 	for _, o := range others {
@@ -59,6 +59,13 @@ func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Player) pro
 			continue
 		}
 		s.Bonuses = append(s.Bonuses, proto.BonusS{Kind: b.Kind, Pos: pv(b.Position)})
+	}
+	if w.Rocks != nil {
+		for i, r := range w.Rocks.List {
+			var q Quat
+			q.SetFromEulerXYZ(r.Ax, r.Ay, r.Az)
+			s.Rocks = append(s.Rocks, proto.RockS{ID: i, Pos: pv(r.Position), Quat: pq(q), Radius: r.Radius})
+		}
 	}
 	for i := 0; i < w.Projectiles.Max; i++ {
 		if w.Projectiles.Ttl[i] <= 0 {

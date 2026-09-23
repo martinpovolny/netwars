@@ -15,7 +15,8 @@ type Fleet struct {
 	Level   int
 	Goals   []goalEntry // ordered — matches the JSON key order of the level table
 	Pending []goalEntry
-	NextID  int // monotonic per arena — a stable handle for the client to match on
+	NextID  int     // monotonic per arena — a stable handle for the client to match on
+	SpawnCd float64 // seconds until the refill loop may spawn another enemy
 }
 
 func makeFleet() *Fleet { return &Fleet{} }
@@ -31,6 +32,7 @@ func startFleetLevel(f *Fleet, n int, k *Constants) {
 	f.Level = n
 	f.Goals = k.goalsForLevelOrdered(n)
 	f.Pending = cloneGoals(f.Goals)
+	f.SpawnCd = 0 // a fresh level's first enemy spawns right away
 }
 
 func goalSum(g []goalEntry) int {
@@ -208,9 +210,17 @@ func stepFleet(f *Fleet, w *World, dt float64, k *Constants) []Event {
 	if len(w.Pods.List) > 0 {
 		anchor = w.Pods.Centroid
 	}
-	for len(f.List) < int(ke["maxAlive"]) && fleetPendingRemaining(f) > 0 {
-		if !spawnEnemy(f, anchor, ship.Pos, k, w.Rng, w.Pods.List) {
-			break
+	// Spawn at most one enemy per tick, gated by SpawnCd — the old unbounded
+	// while loop refilled all the way to maxAlive in a single tick, which at
+	// a level's start (an empty fleet) dumped the whole wave on the player at
+	// once instead of trickling in. Also applies mid-level: several enemies
+	// dying together no longer mass-respawns their replacements together.
+	if f.SpawnCd > 0 {
+		f.SpawnCd -= dt
+	}
+	if f.SpawnCd <= 0 && len(f.List) < int(ke["maxAlive"]) && fleetPendingRemaining(f) > 0 {
+		if spawnEnemy(f, anchor, ship.Pos, k, w.Rng, w.Pods.List) {
+			f.SpawnCd = ke["spawnGapMin"] + w.Rng.Float64()*ke["spawnGapRange"]
 		}
 	}
 	return events

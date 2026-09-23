@@ -47,7 +47,9 @@
     "missileMaxSpeed": 1500,
     "missileGuideDelay": 0.35,
     "missileGuideRate": 0.01,
-    "missileInterceptRadius": 20
+    "missileInterceptRadius": 20,
+    "guidedBoltGuideDelay": 0.05,
+    "guidedBoltGuideRate": 0.25
   },
 
   "enemy": {
@@ -60,6 +62,8 @@
     "radiusPerBulk": 8,
     "shipScale": 2.0,
     "maxAlive": 5,
+    "spawnGapMin": 0.6,
+    "spawnGapRange": 0.6,
     "spawnMin": 1500,
     "spawnRange": 800,
     "podClearance": 900,
@@ -109,11 +113,11 @@
   "bonuses": {
     "radius": 34,
     "life": 26,
-    "maxAlive": 2,
-    "firstDelayMin": 12,
-    "firstDelayRange": 8,
-    "respawnMin": 22,
-    "respawnRange": 18,
+    "maxAlive": 3,
+    "firstDelayMin": 6,
+    "firstDelayRange": 6,
+    "respawnMin": 10,
+    "respawnRange": 10,
     "spawnMin": 500,
     "spawnRange": 700,
     "driftMin": 4,
@@ -121,7 +125,9 @@
     "missileAmount": 6,
     "repairAmount": 35,
     "wantRepairBelow": 0.6,
-    "wantMissilesBelow": 0.4
+    "wantMissilesBelow": 0.4,
+    "guidedChance": 0.2,
+    "guidedRounds": 50
   },
 
   "sim": {
@@ -134,6 +140,19 @@
     "fragLimitDefault": 20,
     "timeLimitDefault": 0,
     "matchOverHold": 8
+  },
+
+  "rocks": {
+    "count": 10,
+    "fieldRadius": 5000,
+    "radiusMin": 50,
+    "radiusMax": 140,
+    "driftSpeedMin": 5,
+    "driftSpeedMax": 15,
+    "spinRateMin": 0.1,
+    "spinRateMax": 0.4,
+    "ramDmg": 24,
+    "ramKnockback": 220
   },
 
   "env": {

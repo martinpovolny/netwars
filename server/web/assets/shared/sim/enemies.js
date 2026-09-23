@@ -58,9 +58,9 @@ export function makeEnemyState(typeKey, ENEMY_TYPES, KE, rng = Math.random) {
   };
 }
 
-// fleet: { list:[enemyState], level, goals, pending }
+// fleet: { list:[enemyState], level, goals, pending, spawnCd }
 export function makeFleet() {
-  return { list: [], level: 0, goals: {}, pending: {} };
+  return { list: [], level: 0, goals: {}, pending: {}, spawnCd: 0 };
 }
 
 export function startFleetLevel(fleet, n, goalsForLevel) {
@@ -68,6 +68,7 @@ export function startFleetLevel(fleet, n, goalsForLevel) {
   fleet.level = n;
   fleet.goals = goalsForLevel(n);
   fleet.pending = { ...fleet.goals };
+  fleet.spawnCd = 0; // a fresh level's first enemy spawns right away
 }
 
 const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
@@ -145,8 +146,16 @@ export function stepFleet(fleet, ctx, dt, KE) {
   fleet.list = keep;
 
   const anchor = ctx.pods.list.length ? ctx.pods.centroid : player.position;
-  while (fleet.list.length < KE.maxAlive && fleetPendingRemaining(fleet) > 0) {
-    if (!spawnEnemy(fleet, anchor, player.position, ctx.ENEMY_TYPES, KE, rng, ctx.pods.list)) break;
+  // Spawn at most one enemy per tick, gated by spawnCd — the old unbounded
+  // while loop refilled all the way to maxAlive in a single tick, which at
+  // a level's start (an empty fleet) dumped the whole wave on the player at
+  // once instead of trickling in. Also applies mid-level: several enemies
+  // dying together no longer mass-respawns their replacements together.
+  if (fleet.spawnCd > 0) fleet.spawnCd -= dt;
+  if (fleet.spawnCd <= 0 && fleet.list.length < KE.maxAlive && fleetPendingRemaining(fleet) > 0) {
+    if (spawnEnemy(fleet, anchor, player.position, ctx.ENEMY_TYPES, KE, rng, ctx.pods.list)) {
+      fleet.spawnCd = KE.spawnGapMin + rng() * KE.spawnGapRange;
+    }
   }
 
   return events;

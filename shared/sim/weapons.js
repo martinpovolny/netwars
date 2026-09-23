@@ -72,6 +72,15 @@ export class Projectiles {
             this.vel[i].lerp(desired, 1 - Math.pow(KW.missileGuideRate, dt));
           }
         }
+      } else if (this.kind[i] === 'bolt' && this.team[i] === 'player' && this.target[i]) {
+        // "guided cannon" bonus (SP/co-op only): much gentler, shorter-lived
+        // homing than a missile — softer guideRate, and it only ever lasts
+        // as long as a bolt's own (much shorter) ttl already does.
+        const tgt = this.target[i];
+        if (this.age[i] > KW.guidedBoltGuideDelay && !tgt.dead) {
+          const desired = _tmp.copy(tgt.position).sub(this.pos[i]).normalize().multiplyScalar(this.vel[i].length());
+          this.vel[i].lerp(desired, 1 - Math.pow(KW.guidedBoltGuideRate, dt));
+        }
       }
       this.pos[i].addScaledVector(this.vel[i], dt);
 

@@ -21,6 +21,11 @@ type Ship struct {
 	Invuln      float64
 	HitPulse    float64
 	BoostFuel   float64 // seconds of boost left; StepShip drains/recharges it
+	// GuidedShots counts down the "guided cannon" bonus (SP/co-op only, never
+	// granted in deathmatch — see spawnBonus's allowGuided) — while > 0, each
+	// cannon shot fired locks onto the nearest live enemy and decrements it,
+	// regardless of whether a target was actually found that shot.
+	GuidedShots int
 }
 
 // GuidePos / GuideDead satisfy guideTarget (weapons.go) — a deathmatch
@@ -72,6 +77,10 @@ type World struct {
 	FSM         *LevelFSM
 	Score       int
 	Events      []Event
+	// Rocks is deathmatch/tdm only — nil in SP/co-op. Populated by newArena,
+	// not NewWorld, since it needs no per-mode branching inside the shared
+	// constructor (see server/game/rocks.go).
+	Rocks *Rocks
 }
 
 // NewWorld seeds an arena from its session id. Matches makeWorld's RNG use
@@ -137,9 +146,12 @@ func (w *World) aimShip(from Vec3) *Ship {
 // applyBonus — the server-side effect of a collected pod (client/sp.js does
 // this for SP; the co-op server owns hull/missiles so it does it here).
 func applyBonus(s *Ship, kind string, k *Constants) {
-	if kind == "repair" {
+	switch kind {
+	case "repair":
 		s.Hull = math.Min(s.MaxHull, s.Hull+k.Bonuses["repairAmount"])
-	} else {
+	case "guided":
+		s.GuidedShots = int(k.Bonuses["guidedRounds"])
+	default: // "missiles"
 		s.Missiles = int(math.Min(k.Player.MaxMissiles, float64(s.Missiles)+k.Bonuses["missileAmount"]))
 	}
 }
@@ -166,7 +178,10 @@ func (w *World) StepWorld(dt float64) []Event {
 	if len(w.Pods.List) > 0 {
 		around = w.Pods.Centroid
 	}
-	if kind := stepBonuses(w.Bonuses, w.Ship, around, dt, w.K.Bonuses, w.Rng); kind != "" {
+	// guided-cannon bonuses (allowGuided=true) only ever spawn in SP/co-op —
+	// deathmatch reuses this same rules.go machinery via Arena.dmBonuses, but
+	// always passes false (see spawnBonus).
+	if kind := stepBonuses(w.Bonuses, w.Ship, around, dt, w.K.Bonuses, w.Rng, true); kind != "" {
 		applyBonus(w.Ship, kind, w.K)
 		events = append(events, Event{Kind: "bonusPicked", Bonus: kind})
 	}
@@ -187,6 +202,7 @@ func (w *World) StepWorld(dt float64) []Event {
 				}
 			}
 		}
+		pruneDeadBonuses(w.Bonuses)
 	}
 
 	// 4. ram + pod strikes (the old loop guarded these with simDt > 0)

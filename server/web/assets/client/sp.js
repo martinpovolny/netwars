@@ -12,6 +12,7 @@ import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
 import { ScreenShake } from './shake.js';
+import { Settings } from './settings.js';
 import { PODS_PER_LEVEL, ENEMY_TYPES, goalsForLevel } from './levels.js';
 import K from '../shared/constants.js';
 import { makeWorld, startWorldLevel, stepWorld } from '../shared/sim/world.js';
@@ -58,6 +59,7 @@ const radar = new Radar();
 const orient = new OrientationInset();
 const hud = new HUD();
 const shake = new ScreenShake();
+const settings = new Settings(audio, environment);
 
 // the shared, authoritative world — the same code the Go server runs. SP owns
 // the ship locally (player.update / stepShip) and hands the rest to stepWorld.
@@ -70,7 +72,7 @@ bonuses.attach(world.bonuses);
 
 let deadAt = 0;          // performance.now() when the player was destroyed
 
-window.__nw = { scene, camera, player, world, enemies, pods, bonuses, weapons, explosions, environment, radar, input, audio, hud, paused: false, get score() { return world.score; }, get state() { return world.fsm.state; } };
+window.__nw = { scene, camera, player, world, enemies, pods, bonuses, weapons, explosions, environment, radar, input, audio, hud, settings, paused: false, get score() { return world.score; }, get state() { return world.fsm.state; } };
 
 canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
 
@@ -91,9 +93,13 @@ pauseBtn.addEventListener('click', () => setPaused(!window.__nw.paused));
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
+  // settings panel first: while it's open, up/down/left/right/escape belong
+  // to it, not flight or any other single-key toggle below.
+  if (settings.handleKey(e.code)) return;
   if (e.code === 'Enter') { toggleFullscreen(); return; }
   if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
   if (e.code === 'KeyL') { hud.flash(environment.toggleConstellations() ? 'CONSTELLATIONS ON' : 'CONSTELLATIONS OFF', 1.2); return; }
+  if (e.code === 'KeyO') { settings.toggle(); return; }
   if (e.code === 'KeyP') { setPaused(!window.__nw.paused); return; }
   // dead: the fight goes on without you — any key (after a beat) relaunches
   if (!player.alive) {
@@ -134,8 +140,9 @@ function handleWorldEvent(ev) {
   switch (ev.kind) {
     case 'bonusPicked':
       if (ev.bonus === 'missiles') { player.giveMissiles(6); hud.flash('+6 MISSILES', 1.4); }
+      else if (ev.bonus === 'guided') { player.guidedShots = K.bonuses.guidedRounds; hud.flash(`+${K.bonuses.guidedRounds} GUIDED ROUNDS`, 1.4); }
       else { player.repair(35); hud.flash('+35 HULL', 1.4); }
-      explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : 0x3ad0ff);
+      explosions.hit(player.position, ev.bonus === 'repair' ? 0x2fe06a : ev.bonus === 'guided' ? 0xb26bff : 0x3ad0ff);
       audio.pickup();
       break;
     case 'ram':
@@ -200,8 +207,11 @@ function frame(now) {
 
   const wasAlive = player.alive;
   // the world keeps simulating even when the player is dead (spectating);
-  // only a manual pause freezes it
-  const paused = window.__nw.paused;
+  // a manual pause OR the settings panel being open both freeze it —
+  // settings doesn't touch window.__nw.paused itself (that also shows the
+  // "Paused" banner, which would double up with the settings panel), it
+  // just gets ORed in here.
+  const paused = window.__nw.paused || settings.isOpen;
   const simDt = paused ? 0 : dt;
 
   // client-predicted own ship — fully skipped while paused (not just given
@@ -231,7 +241,7 @@ function frame(now) {
   for (let mi = 0; mi < pr.max; mi++) {
     if (pr.ttl[mi] > 0 && pr.kind[mi] === 'missile') radarMissiles.push({ position: pr.pos[mi], mine: true });
   }
-  radar.update(player, enemies, pods, bonuses, null, radarMissiles, simDt);
+  radar.update(player, enemies, pods, bonuses, null, radarMissiles, null, simDt);
   if (radar.autoZoomStarted) hud.flash('SCANNER AUTO-RANGING…', 1.2);
   else if (radar.autoZoomMaxedOut) hud.flash('NO CONTACTS IN RANGE', 1.6);
   orient.update(player);

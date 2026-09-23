@@ -102,22 +102,28 @@ func makeBonuses(kb Block, rng *Rng) *Bonuses {
 	}
 }
 
-// spawnBonus draw order: kind (0 or 1 — only when both/neither wanted), _t(1),
-// dir(2)+mag(1), dir(2)+mag(1).
-func spawnBonus(b *Bonuses, around Vec3, ship *Ship, kb Block, rng *Rng) {
-	wantRepair := ship.Hull < ship.MaxHull*kb["wantRepairBelow"]
-	wantMsl := float64(ship.Missiles) < ship.MaxMissiles*kb["wantMissilesBelow"]
+// spawnBonus draw order: [guided(1) if allowGuided] then either kind(0 or 1 —
+// only when both/neither wanted) or nothing (guided already chose), _t(1),
+// dir(2)+mag(1), dir(2)+mag(1). allowGuided is false for deathmatch/tdm (see
+// Arena.dmBonuses) — the guided-cannon bonus only ever appears in SP/co-op.
+func spawnBonus(b *Bonuses, around Vec3, ship *Ship, kb Block, rng *Rng, allowGuided bool) {
 	var kind string
-	switch {
-	case wantRepair && !wantMsl:
-		kind = "repair"
-	case wantMsl && !wantRepair:
-		kind = "missiles"
-	default:
-		if rng.Float64() < 0.5 {
+	if allowGuided && rng.Float64() < kb["guidedChance"] {
+		kind = "guided"
+	} else {
+		wantRepair := ship.Hull < ship.MaxHull*kb["wantRepairBelow"]
+		wantMsl := float64(ship.Missiles) < ship.MaxMissiles*kb["wantMissilesBelow"]
+		switch {
+		case wantRepair && !wantMsl:
 			kind = "repair"
-		} else {
+		case wantMsl && !wantRepair:
 			kind = "missiles"
+		default:
+			if rng.Float64() < 0.5 {
+				kind = "repair"
+			} else {
+				kind = "missiles"
+			}
 		}
 	}
 	t := rng.Float64() * 6
@@ -145,14 +151,32 @@ func bonusHitByShot(b *Bonuses, pos Vec3) bool {
 	return false
 }
 
+// pruneDeadBonuses drops every Dead entry from b.List. stepBonuses already
+// does this for the deaths it finds itself (life expiry / its own ship
+// touch), but DM's extra collection paths — dmBonuses' multi-ship touch
+// sweep, dmProjectiles' shoot-to-collect — mark bo.Dead directly without
+// going through stepBonuses, so they call this afterward. Left unpruned, a
+// "collected" bonus would still count against Bonuses.MaxAlive (blocking a
+// new one from spawning) even though BuildSnapshot already hides it from
+// clients (it only skips Dead, it doesn't filter the slice).
+func pruneDeadBonuses(b *Bonuses) {
+	keep := b.List[:0:0]
+	for _, bo := range b.List {
+		if !bo.Dead {
+			keep = append(keep, bo)
+		}
+	}
+	b.List = keep
+}
+
 // stepBonuses returns the kind collected this tick, or "".
-func stepBonuses(b *Bonuses, ship *Ship, around Vec3, dt float64, kb Block, rng *Rng) string {
+func stepBonuses(b *Bonuses, ship *Ship, around Vec3, dt float64, kb Block, rng *Rng, allowGuided bool) string {
 	collected := ""
 
 	b.Timer -= dt
 	if b.Timer <= 0 && len(b.List) < b.MaxAlive {
 		b.Timer = kb["respawnMin"] + rng.Float64()*kb["respawnRange"]
-		spawnBonus(b, around, ship, kb, rng)
+		spawnBonus(b, around, ship, kb, rng, allowGuided)
 	}
 
 	for _, bo := range b.List {

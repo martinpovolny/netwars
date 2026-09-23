@@ -11,6 +11,12 @@ const enemyBoltSpeed = 950.0
 // solve compensates for it (twin of shared/sim/ai.js BOLT_INHERIT).
 const boltInherit = 0.4
 
+// "aiFireDefaultAimDot" in constants.json — how well-aligned the player
+// already has to be for an opportunistic shot: any enemy should shoot at
+// the player if it happens to have a nice shot while doing its task (twin
+// of shared/sim/ai.js OPPORTUNISTIC_AIM_DOT).
+const opportunisticAimDot = 0.985
+
 // Guardian "lance" — telegraphed, fast, spaced (twin of shared/sim/ai.js).
 const (
 	lanceSpeed  = 1500.0
@@ -90,6 +96,34 @@ func nearestPod(pos Vec3, pods *Pods) *Pod {
 	bd := math.Inf(1)
 	for _, p := range pods.List {
 		if p.Dead {
+			continue
+		}
+		d := pos.DistanceToSq(p.Position)
+		if d < bd {
+			bd = d
+			best = p
+		}
+	}
+	return best
+}
+
+// nearestUnclaimedPod is nearestPod but for thief targeting only: it also
+// skips any pod another thief already has Captor on. thief() now claims a
+// pod (sets Captor) the moment it's picked, not just once physically
+// grabbed — without this exclusion, nearestPod couldn't tell a claimed pod
+// from a free one, so two thieves would both target the same one, and a
+// second thief re-picking away from an already-captured pod would often
+// just land back on that same pod (still "nearest") and steal the Captor
+// role mid-haul. With two thieves alternately overwriting Loot.Position from
+// their own diverging HaulDir each tick, the pod's apparent distance from
+// either one's HaulStart could spike well past normal, tripping the
+// 2600-unit escape check far sooner than a real haul ever would — the
+// observed "thieves disappear with the pod too early."
+func nearestUnclaimedPod(pos Vec3, pods *Pods) *Pod {
+	var best *Pod
+	bd := math.Inf(1)
+	for _, p := range pods.List {
+		if p.Dead || p.Captor != nil {
 			continue
 		}
 		d := pos.DistanceToSq(p.Position)
@@ -240,6 +274,33 @@ func fwdDot(e *Enemy, x Vec3) float64 {
 	return f.Dot(x)
 }
 
+// pickOpportunisticTarget reports whether the player is a "nice shot" this
+// enemy already happens to have — alive, in range, and already within
+// aiFireDefaultAimDot of dead-on — without it changing what it's actually
+// doing (still chasing its pod, hauling, etc). Callers that have a primary
+// target fall back to it when this returns false; thief's haul phase (no
+// primary target at all — it doesn't chase pods while already hauling one)
+// just skips firing that tick. Any enemy should shoot at the player if it
+// happens to have a nice shot while doing its task.
+func pickOpportunisticTarget(e *Enemy, w *World) (pos, vel Vec3, aimDot float64, ok bool) {
+	player := w.aimShip(e.Position)
+	if !player.Alive {
+		return Vec3{}, Vec3{}, 0, false
+	}
+	d := player.Pos
+	d.Sub(e.Position)
+	dist := d.Length()
+	if dist <= 1e-3 || dist > e.Stats.FireRange {
+		return Vec3{}, Vec3{}, 0, false
+	}
+	d.MultiplyScalar(1 / dist)
+	dot := opportunisticAimDot
+	if fwdDot(e, d) < dot {
+		return Vec3{}, Vec3{}, 0, false
+	}
+	return player.Pos, player.Vel, dot, true
+}
+
 // ---- behaviours -------------------------------------------------------
 
 func brawler(e *Enemy, dt float64, w *World) {
@@ -288,7 +349,11 @@ func brawler(e *Enemy, dt float64, w *World) {
 		v := player.Vel
 		tvel = &v
 	}
-	tryFire(e, dt, tgt, w, 0.985, tvel)
+	fTgt, fVel, fDot := tgt, tvel, 0.985
+	if pos, vel, dot, ok := pickOpportunisticTarget(e, w); ok {
+		fTgt, fVel, fDot = pos, &vel, dot
+	}
+	tryFire(e, dt, fTgt, w, fDot, fVel)
 }
 
 func strafer(e *Enemy, dt float64, w *World) {
@@ -303,7 +368,11 @@ func strafer(e *Enemy, dt float64, w *World) {
 
 	if e.State == "run" {
 		fly(e, dt, to, flyOpts{throttle: 1, turn: e.Stats.Turn * 0.85, vmax: e.Vmax * 1.15, set: optTurn | optVmax})
-		tryFire(e, dt, e.AimPos, w, 0.95, nil)
+		fTgt, fVel, fDot := e.AimPos, (*Vec3)(nil), 0.95
+		if pos, vel, dot, ok := pickOpportunisticTarget(e, w); ok {
+			fTgt, fVel, fDot = pos, &vel, dot
+		}
+		tryFire(e, dt, fTgt, w, fDot, fVel)
 		if dist < 240 || e.StateT > 5 {
 			e.State = "break"
 			e.StateT = 0
@@ -413,11 +482,16 @@ func sniper(e *Enemy, dt float64, w *World) {
 			e.HoldFor = 5 + w.Rng.Float64()*3
 		}
 	} else {
+		// hold and track the intercept. Guardian already has the highest base
+		// turn of any type (turnFactor 32 vs 20-24) — a 1.6x multiplier on top
+		// of that let it snap-aim onto the player almost instantly, making it
+		// un-juke-able despite the "telegraphed" lance charge; every other
+		// behavior's multiplier here is <= 0.95 (see fly() calls above/below).
 		var lead Vec3
 		leadPointS(e.Position, player.Pos, player.Vel, &lead, lanceSpeed)
 		d := lead
 		d.Sub(e.Position).Normalize()
-		fly(e, dt, d, flyOpts{throttle: 0, brakeAll: 1.2, turn: e.Stats.Turn * 1.6, set: optTurn})
+		fly(e, dt, d, flyOpts{throttle: 0, brakeAll: 1.2, turn: e.Stats.Turn * 0.9, set: optTurn})
 		sniperFire(e, dt, w)
 		e.StateT += dt
 		if e.StateT > e.HoldFor || toPlayer < 360 {
@@ -457,11 +531,12 @@ func thief(e *Enemy, dt float64, w *World) {
 		if e.State == "haul" {
 			e.State = "approach"
 		}
-		e.Loot = nearestPod(e.Position, pods)
+		e.Loot = nearestUnclaimedPod(e.Position, pods)
 		if e.Loot == nil {
 			brawler(e, dt, w)
 			return
 		}
+		e.Loot.Captor = e // claim it now, at pick time — see nearestUnclaimedPod
 	}
 	to := e.Loot.Position
 	to.Sub(e.Position)
@@ -484,8 +559,7 @@ func thief(e *Enemy, dt float64, w *World) {
 		}
 		tryFire(e, dt, player.Pos, w, 0.99, pv)
 		if dist < e.Radius+e.Loot.Radius+10 && e.Velocity.Length() < 80 {
-			e.State = "haul"
-			e.Loot.Captor = e
+			e.State = "haul" // Captor was already claimed at pick time, above
 			e.HaulDir = e.Loot.Position
 			e.HaulDir.Sub(pods.Centroid)
 			if e.HaulDir.LengthSq() < 1 {
@@ -502,6 +576,11 @@ func thief(e *Enemy, dt float64, w *World) {
 		e.Loot.Position = e.Position
 		e.Loot.Position.AddScaledVector(f, e.Radius+e.Loot.Radius)
 		e.Loot.Velocity = Vec3{}
+		// no pod to fall back to while hauling — an opportunistic shot at the
+		// player or nothing at all this tick.
+		if pos, vel, dot, ok := pickOpportunisticTarget(e, w); ok {
+			tryFire(e, dt, pos, w, dot, &vel)
+		}
 		if e.Loot.Position.DistanceTo(e.HaulStart) > 2600 {
 			e.Loot.Dead = true
 			e.Loot.Captor = nil

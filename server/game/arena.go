@@ -105,6 +105,9 @@ func newArena(k *Constants, session, mode, seed string, fragLimit int, timeLimit
 		in:        make(chan arenaInput, 256),
 		players:   map[string]*Player{},
 	}
+	if a.dm {
+		a.world.Rocks = makeRocks(k.Rocks, a.world.Rng)
+	}
 	return a
 }
 
@@ -157,6 +160,7 @@ func resetShip(s *Ship, k *Constants) {
 	s.HitPulse = 0
 	s.Invuln = k.Player.InvulnOnReset
 	s.Alive = true
+	s.GuidedShots = 0
 }
 
 func (a *Arena) run(ctx context.Context) {
@@ -396,8 +400,13 @@ func (a *Arena) stepDM() {
 			evs = append(evs, Event{Kind: "matchStart"})
 		}
 	} else {
+		if a.world.Rocks != nil {
+			stepRocks(a.world.Rocks, a.k.Rocks["fieldRadius"], tickDT)
+			evs = append(evs, a.dmRockCollisions()...)
+		}
 		evs = append(evs, a.dmRams()...)
 		evs = append(evs, a.dmProjectiles()...)
+		evs = append(evs, a.dmBonuses()...)
 
 		a.matchElapsed += tickDT
 		if winner, over := a.checkMatchOver(); over {
@@ -464,6 +473,11 @@ func (a *Arena) dmProjectiles() []Event {
 		if pr.Ttl[i] <= 0 {
 			continue
 		}
+		if a.world.Rocks != nil && rockAbsorbs(a.world.Rocks, pr.Pos[i]) {
+			pr.Ttl[i] = 0
+			evs = append(evs, Event{Kind: "rockHit", Pos: pr.Pos[i]})
+			continue
+		}
 
 		r := kw["playerHitRadius"]
 		dmg := kw["cannonDmg"]
@@ -500,6 +514,31 @@ func (a *Arena) dmProjectiles() []Event {
 				break
 			}
 		}
+
+		// a shot that didn't reach a player can still collect a bonus — co-op
+		// has this via bonusHitByShot (weapons.go's Projectiles.Step), but
+		// dmProjectiles is its own separate loop and never called it, so
+		// shooting a bonus in DM/TDM silently did nothing. Unlike co-op
+		// (which always credits its one "focus" ship), this credits whoever
+		// actually fired the shot — DM has no single ship to default to, and
+		// crediting the wrong player's hull/missiles would be its own bug.
+		if pr.Ttl[i] > 0 {
+			for _, bo := range a.world.Bonuses.List {
+				if bo.Dead {
+					continue
+				}
+				if pr.Pos[i].DistanceToSq(bo.Position) < bo.Radius*bo.Radius {
+					bo.Dead = true
+					pr.Ttl[i] = 0
+					if owner != nil {
+						applyBonus(owner.Ship, bo.Kind, a.k)
+					}
+					evs = append(evs, Event{Kind: "bonusPicked", Bonus: bo.Kind})
+					pruneDeadBonuses(a.world.Bonuses)
+					break
+				}
+			}
+		}
 	}
 
 	// bolt-vs-missile: fly straight at an incoming missile and shoot it
@@ -523,6 +562,81 @@ func (a *Arena) dmProjectiles() []Event {
 		}
 	}
 
+	return evs
+}
+
+// dmBonuses — cadence/drift/collect for the repair & missile pickups,
+// reusing the exact same Bonus state, spawn draw, and applyBonus effect
+// co-op already uses (server/game/rules.go). Co-op has one designated
+// "focus" ship whose hull/missile levels bias which kind is more likely to
+// spawn; deathmatch has no such single ship, so order[0] just stands in for
+// that one coin-flip-ish heuristic — every alive ship, order[0] included,
+// can actually collect any bonus regardless of which one "wanted" it,
+// mirroring co-op's own multi-ship sweep in World.StepWorld.
+func (a *Arena) dmBonuses() []Event {
+	if len(a.order) == 0 {
+		return nil
+	}
+	var evs []Event
+	focus := a.players[a.order[0]].Ship
+	around := a.actionCentroid("")
+	// allowGuided=false: the guided-cannon bonus is SP/co-op only, never DM.
+	if kind := stepBonuses(a.world.Bonuses, focus, around, tickDT, a.k.Bonuses, a.world.Rng, false); kind != "" {
+		applyBonus(focus, kind, a.k)
+		evs = append(evs, Event{Kind: "bonusPicked", Bonus: kind})
+	}
+	for _, bo := range a.world.Bonuses.List {
+		if bo.Dead {
+			continue
+		}
+		for _, id := range a.order[1:] {
+			sh := a.players[id].Ship
+			if !sh.Alive {
+				continue
+			}
+			if bo.Position.DistanceToSq(sh.Pos) < bo.Radius*bo.Radius {
+				bo.Dead = true
+				applyBonus(sh, bo.Kind, a.k)
+				evs = append(evs, Event{Kind: "bonusPicked", Bonus: bo.Kind})
+				break
+			}
+		}
+	}
+	pruneDeadBonuses(a.world.Bonuses)
+	return evs
+}
+
+// dmRockCollisions — a ship that touches a meteorite takes damage and
+// bounces off; the rock itself is unaffected (indestructible terrain, not
+// another combatant — no frag, no knockback on the rock).
+func (a *Arena) dmRockCollisions() []Event {
+	dmg := a.k.Rocks["ramDmg"]
+	kb := a.k.Rocks["ramKnockback"]
+	var evs []Event
+	for _, id := range a.order {
+		p := a.players[id]
+		if !p.Ship.Alive {
+			continue
+		}
+		for _, r := range a.world.Rocks.List {
+			rr := p.Ship.Pos.DistanceToSq(r.Position)
+			touch := a.k.Player.Radius + r.Radius
+			if rr >= touch*touch {
+				continue
+			}
+			away := p.Ship.Pos
+			away.Sub(r.Position).Normalize()
+			p.Ship.Damage(dmg)
+			p.Ship.Vel.AddScaledVector(away, kb)
+			// push the ship fully clear so it doesn't re-trigger every tick
+			// it would otherwise still overlap for while pinned against a
+			// much larger body.
+			p.Ship.Pos = r.Position
+			p.Ship.Pos.AddScaledVector(away, touch+1)
+			evs = append(evs, Event{Kind: "rockHit", Pos: p.Ship.Pos})
+			break // one rock per ship per tick is plenty
+		}
+	}
 	return evs
 }
 
@@ -701,7 +815,48 @@ func (a *Arena) teamOrNone(p *Player) int {
 	return p.team
 }
 
-// dmSpawnPos drops a (re)spawning fighter onto a random point ~550-950u out,
+// actionCentroid is "where the fight currently is" — the average position of
+// every currently-alive ship (excluding excludeID, if given: at join time
+// that ship is already in a.order but still sitting at the zero-value
+// origin, which would otherwise pull the centroid toward (0,0,0) right
+// when a fresh join is about to use this anchor for its own first spawn),
+// falling back to every ship (dead included) if none are alive, falling
+// back to the world origin if there are no other players at all. dmSpawnPos
+// anchors around this instead of a fixed point so a respawn (or a fresh
+// join) never lands far from wherever players have actually drifted to
+// over a long match — a fixed-origin anchor could leave a respawning
+// player stranded with nothing nearby, same failure mode the radar auto
+// zoom-out exists to recover from, but avoidable here outright.
+func (a *Arena) actionCentroid(excludeID string) Vec3 {
+	var sum Vec3
+	n := 0
+	for _, id := range a.order {
+		if id == excludeID {
+			continue
+		}
+		if sh := a.players[id].Ship; sh.Alive {
+			sum.Add(sh.Pos)
+			n++
+		}
+	}
+	if n == 0 {
+		for _, id := range a.order {
+			if id == excludeID {
+				continue
+			}
+			sum.Add(a.players[id].Ship.Pos)
+			n++
+		}
+	}
+	if n == 0 {
+		return Vec3{}
+	}
+	sum.MultiplyScalar(1 / float64(n))
+	return sum
+}
+
+// dmSpawnPos drops a (re)spawning fighter onto a random point ~550-950u out
+// from actionCentroid (see there for why that anchor, not a fixed point),
 // retrying if the draw lands too close to another currently-alive ship — a
 // plain random draw with no separation check could, and did, put two players
 // right on top of each other (or close enough that one dies before it can
@@ -711,14 +866,15 @@ func (a *Arena) teamOrNone(p *Player) int {
 // candidate away from (0,0,0) for no reason.
 //
 // team (-1 = no bias, else 0/1) mirrors the draw onto that team's own side
-// of the arena (team 0 always +X, team 1 always -X) by flipping the X
+// of the anchor (team 0 always +X of it, team 1 always -X) by flipping the X
 // component when it lands on the wrong side — gives each team a real "home"
 // area for positional identity, without spending an extra rng draw (so it
 // doesn't perturb anything that assumes a fixed draw count per spawn).
 func (a *Arena) dmSpawnPos(selfID string, team int) Vec3 {
 	const minSep = 400.0 // clear every other alive ship by at least this
 	const maxTries = 10
-	best, bestD := Vec3{}, -1.0
+	anchor := a.actionCentroid(selfID)
+	best, bestD := anchor, -1.0
 	for try := 0; try < maxTries; try++ {
 		var d Vec3
 		RandomDir(a.world.Rng, &d)
@@ -726,6 +882,7 @@ func (a *Arena) dmSpawnPos(selfID string, team int) Vec3 {
 		if (team == 0 && d.X < 0) || (team == 1 && d.X > 0) {
 			d.X = -d.X
 		}
+		d.Add(anchor)
 
 		nd := math.Inf(1)
 		for _, id := range a.order {
@@ -766,6 +923,27 @@ func (a *Arena) fireWeapons(p *Player) {
 	p.gunCd -= tickDT
 	if p.wantGun && p.gunCd <= 0 {
 		p.gunCd = kp.GunInterval
+		// guided cannon (SP/co-op only — s.GuidedShots is never set in
+		// deathmatch, see spawnBonus's allowGuided): lock the nearest live
+		// enemy for both bolts of this shot and spend one of the rounds,
+		// even if there's nothing in the fleet to lock onto right now.
+		var target guideTarget
+		if s.GuidedShots > 0 {
+			var best *Enemy
+			bd := math.Inf(1)
+			for _, e := range a.world.Fleet.List {
+				if e.Dead {
+					continue
+				}
+				if d := e.Position.DistanceToSq(s.Pos); d < bd {
+					bd, best = d, e
+				}
+			}
+			if best != nil {
+				target = best
+			}
+			s.GuidedShots--
+		}
 		for _, side := range [2]float64{-1, 1} {
 			pos := s.Pos
 			pos.AddScaledVector(rightV, side*kp.GunHardpoint.Side)
@@ -773,7 +951,7 @@ func (a *Arena) fireWeapons(p *Player) {
 			pos.AddScaledVector(fwdV, kp.GunHardpoint.Fwd)
 			vel := s.Vel
 			vel.AddScaledVector(fwdV, kp.CannonMuzzle)
-			a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.BoltTtl, nil, kindBolt, p.ID)
+			a.world.Projectiles.Spawn(pos, vel, teamPlayer, kp.BoltTtl, target, kindBolt, p.ID)
 		}
 	}
 	p.wantGun = false
