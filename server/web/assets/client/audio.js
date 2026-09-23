@@ -4,6 +4,13 @@
 // remembered.
 const TRACK_URL = (i) => `tracks/track_${String(i).padStart(2, '0')}.mp3`;
 const MAX_TRACKS = 32;
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+// the actual tuned level each track/blip gain was designed at — the volume
+// sliders are a 0..1 multiplier on TOP of this, not a replacement for it, so
+// 100% still sounds exactly like it always has and every SFX keeps its
+// hand-tuned balance relative to the others as the one SFX slider scales them.
+const MUSIC_BASE_GAIN = 0.35;
 
 export class Audio {
   constructor() {
@@ -12,11 +19,28 @@ export class Audio {
     this.trackIdx = 0;
     this.playlist = [TRACK_URL(1)];   // replaced by _discoverTracks()
     this.musicOn = true;        // default on; starts at the first user gesture
+    this.musicVolume = 1;       // 0..1, multiplies MUSIC_BASE_GAIN
+    this.sfxVolume = 1;         // 0..1, multiplies every _tone/_noise gain
     try {
       const v = localStorage.getItem('nw-music');
       if (v !== null) this.musicOn = v === '1';   // respect an explicit earlier choice
+      const mv = localStorage.getItem('nw-music-vol');
+      if (mv !== null) this.musicVolume = clamp01(parseFloat(mv));
+      const sv = localStorage.getItem('nw-sfx-vol');
+      if (sv !== null) this.sfxVolume = clamp01(parseFloat(sv));
     } catch { /* private mode */ }
     this._discoverTracks();
+  }
+
+  setMusicVolume(v) {
+    this.musicVolume = clamp01(v);
+    try { localStorage.setItem('nw-music-vol', String(this.musicVolume)); } catch { /* ignore */ }
+    if (this.music) this.music.volume = MUSIC_BASE_GAIN * this.musicVolume;
+  }
+
+  setSfxVolume(v) {
+    this.sfxVolume = clamp01(v);
+    try { localStorage.setItem('nw-sfx-vol', String(this.sfxVolume)); } catch { /* ignore */ }
   }
 
   // Probe track_01.mp3, track_02.mp3, … until one is missing. HEAD requests to
@@ -37,7 +61,7 @@ export class Audio {
     if (this.music) return;
     const a = new window.Audio(this.playlist[this.trackIdx]);
     a.loop = false;            // advance the playlist manually on 'ended'
-    a.volume = 0.35;
+    a.volume = MUSIC_BASE_GAIN * this.musicVolume;
     a.preload = 'auto';
     a.addEventListener('ended', () => this._nextTrack());
     this.music = a;
@@ -78,6 +102,8 @@ export class Audio {
   _tone(freq, dur, type = 'square', gain = 0.05, slideTo = null) {
     const c = this.ctx;
     if (!c) return;
+    gain *= this.sfxVolume;
+    if (gain <= 0) return; // exponentialRampToValueAtTime can't ramp from/to 0
     const t = c.currentTime;
     const o = c.createOscillator();
     const g = c.createGain();
@@ -94,6 +120,8 @@ export class Audio {
   _noise(dur, gain = 0.14) {
     const c = this.ctx;
     if (!c) return;
+    gain *= this.sfxVolume;
+    if (gain <= 0) return;
     const t = c.currentTime;
     const buf = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate);
     const d = buf.getChannelData(0);

@@ -23,6 +23,7 @@ import { Radar } from './radar.js';
 import { OrientationInset } from './orientation.js';
 import { HUD } from './hud.js';
 import { ScreenShake } from './shake.js';
+import { Settings } from './settings.js';
 import { ENEMY_TYPES } from './levels.js';
 import { makePlayerShip } from './ships.js';
 import { showFatalError } from './webgl.js';
@@ -127,6 +128,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
   const orient = new OrientationInset();
   const hud = new HUD();
   const shake = new ScreenShake();
+  const settings = new Settings(audio, environment);
 
   // deathmatch match-over overlay — only ever shown/hidden here, driven by
   // the server's matchOver/matchStart events (frame loop just ticks the
@@ -282,16 +284,20 @@ function runOnline({ ws, welcome }, { mode, name }) {
 
   window.__nw = {
     online: true, scene, camera, player, world, enemies, pods, bonuses, meteorites, weapons,
-    explosions, environment, radar, input, audio, hud, ws, playerId: welcome.playerId,
+    explosions, environment, radar, input, audio, hud, settings, ws, playerId: welcome.playerId,
     paused: false, get score() { return world.score; }, get state() { return world.fsm.state; },
   };
 
   canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    // settings panel first: while it's open, up/down/left/right/escape
+    // belong to it, not flight or any other single-key toggle below.
+    if (settings.handleKey(e.code)) return;
     if (e.code === 'Enter') { toggleFullscreen(); return; }
     if (e.code === 'KeyM') { hud.flash(audio.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF', 1.2); return; }
     if (e.code === 'KeyL') { hud.flash(environment.toggleConstellations() ? 'CONSTELLATIONS ON' : 'CONSTELLATIONS OFF', 1.2); return; }
+    if (e.code === 'KeyO') { settings.toggle(); return; }
     if (e.code === 'KeyH') hud.showHelp(4);
     if (e.code === 'BracketRight' || e.code === 'Equal') { radar.zoom(1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
     if (e.code === 'BracketLeft' || e.code === 'Minus') { radar.zoom(-1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
@@ -343,19 +349,26 @@ function runOnline({ ws, welcome }, { mode, name }) {
   let seq = 0;
   function sendInput(dt) {
     if (ws.readyState !== WebSocket.OPEN) return;
+    // the settings panel reuses arrow keys for its own navigation — a
+    // network game can't pause the server, so instead we just stop sending
+    // real flight/fire input while it's open (a neutral frame, not the
+    // stale last-held one) and let the ship coast.
+    const suppress = settings.isOpen;
     let roll = 0;
-    if (input.has('KeyA')) roll += 1;
-    if (input.has('KeyD')) roll -= 1;
     let thrust = 0;
-    if (input.has('KeyW') || input.has('ArrowUp')) thrust += 1;
-    if (input.has('KeyS') || input.has('ArrowDown')) thrust -= 1;
+    if (!suppress) {
+      if (input.has('KeyA')) roll += 1;
+      if (input.has('KeyD')) roll -= 1;
+      if (input.has('KeyW') || input.has('ArrowUp')) thrust += 1;
+      if (input.has('KeyS') || input.has('ArrowDown')) thrust -= 1;
+    }
     // the exact control frame the server will integrate — logged so we can
     // replay the ones it hasn't acked yet on top of the next snapshot
     const ctrl = {
       intentX: player.intent.x, intentY: player.intent.y, roll, thrust,
-      brake: input.has('KeyC'),
-      boost: input.has('ShiftLeft') || input.has('ShiftRight'),
-      stop: input.has('KeyX'),
+      brake: !suppress && input.has('KeyC'),
+      boost: !suppress && (input.has('ShiftLeft') || input.has('ShiftRight')),
+      stop: !suppress && input.has('KeyX'),
     };
     const n = ++seq;
     inputLog.push({ seq: n, ctrl, dt });
@@ -369,8 +382,8 @@ function runOnline({ ws, welcome }, { mode, name }) {
       type: 'input', seq: n, t: performance.now(),
       ix: ctrl.intentX, iy: ctrl.intentY, roll, thrust,
       brake: ctrl.brake, boost: ctrl.boost, stop: ctrl.stop,
-      gun: input.has('Space') || input.mouseFire,
-      msl: input.has('KeyF') || input.mouseRight,
+      gun: !suppress && (input.has('Space') || input.mouseFire),
+      msl: !suppress && (input.has('KeyF') || input.mouseRight),
       mt, mp,
       // self-reported RTT so other players can see it next to our name —
       // ping/pong only round-trips this client<->server, it never reaches
@@ -653,8 +666,12 @@ function runOnline({ ws, welcome }, { mode, name }) {
     dt = Math.min(dt, 0.05);
     if (!Number.isFinite(dt) || dt < 0) dt = 0;
 
-    // predict own ship (movement only; fire is server-side)
-    player.update(dt, input, predictWeapons, enemies, audio);
+    // predict own ship (movement only; fire is server-side) — skipped while
+    // the settings panel is open so its arrow-key navigation can't also
+    // steer the ship; still drain the accumulated mouse motion so aim
+    // doesn't snap the instant it closes.
+    if (settings.isOpen) input.takeMouse();
+    else player.update(dt, input, predictWeapons, enemies, audio);
     sendInput(dt);
     if (now - lastPing > 1000 && ws.readyState === WebSocket.OPEN) {
       lastPing = now;
