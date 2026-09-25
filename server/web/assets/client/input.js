@@ -76,12 +76,21 @@ export class Input {
   steerOffset() { return this._steer ? { x: this._steer.x - this._steer.startX, y: this._steer.y - this._steer.startY } : { x: 0, y: 0 }; }
 
   _initTouch(dom) {
+    // Use targetTouches, not touches: `touches` lists every finger touching
+    // the SCREEN, page-wide, including ones on the separate #touch-bar
+    // (thrust/missile) elements — `targetTouches` is scoped to fingers that
+    // actually started on this element. Using `touches` here was a real bug:
+    // steering with one finger while another rests on the missile/thrust bar,
+    // then lifting the steering finger, handed steering "off" to that other,
+    // unrelated finger (picked from the page-wide list) — which never fires
+    // canvas events again, permanently freezing steering while fire/missile
+    // (driven by separate state) kept working fine.
     const start = (e) => {
       e.preventDefault();
       for (const t of e.changedTouches) {
         if (!this._steer) this._steer = { id: t.identifier, startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY };
       }
-      this._touchCount = e.touches.length;
+      this._touchCount = e.targetTouches.length;
       this.mouseFire = this._touchCount >= 2;
     };
     const move = (e) => {
@@ -94,13 +103,13 @@ export class Input {
     const end = (e) => {
       e.preventDefault();
       if (this._steer && [...e.changedTouches].some((t) => t.identifier === this._steer.id)) {
-        // hand steering to another finger still down, if any, rather than
-        // snapping to 0 — its own start point resets here so it doesn't
-        // jump to wherever the old finger's offset was
-        const next = [...e.touches][0];
+        // hand steering to another finger still down ON THE CANVAS, if any,
+        // rather than snapping to 0 — its own start point resets here so it
+        // doesn't jump to wherever the old finger's offset was
+        const next = [...e.targetTouches][0];
         this._steer = next ? { id: next.identifier, startX: next.clientX, startY: next.clientY, x: next.clientX, y: next.clientY } : null;
       }
-      this._touchCount = e.touches.length;
+      this._touchCount = e.targetTouches.length;
       this.mouseFire = this._touchCount >= 2;
     };
     dom.addEventListener('touchstart', start, { passive: false });
