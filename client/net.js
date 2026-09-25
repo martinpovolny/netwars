@@ -115,6 +115,7 @@ function runOnline({ ws, welcome }, { mode, name }) {
   scene.add(rim);
 
   const input = new Input(canvas);
+  input.attachTouchBar();
   const audio = new Audio();
   const player = new Player();
   const weapons = new Weapons(scene);
@@ -288,7 +289,9 @@ function runOnline({ ws, welcome }, { mode, name }) {
     paused: false, get score() { return world.score; }, get state() { return world.fsm.state; },
   };
 
-  canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
+  const firstGesture = () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); };
+  canvas.addEventListener('mousedown', firstGesture, { once: true });
+  canvas.addEventListener('touchstart', firstGesture, { once: true, passive: true });
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
     // settings panel first: while it's open, up/down/left/right/escape
@@ -303,10 +306,18 @@ function runOnline({ ws, welcome }, { mode, name }) {
     if (e.code === 'BracketLeft' || e.code === 'Minus') { radar.zoom(-1); hud.flash(`SCAN Z${radar.zoomLevel} · ${radar.range}`, 0.9); }
   });
 
+  // height of #touch-bar in px (0 when not shown) — read once per resize
+  // rather than every frame (offsetHeight forces a layout reflow), so the
+  // radar/gauges can be pushed clear of it without hardcoding its CSS
+  // height a second time here.
+  let touchBarH = 0;
+  const touchBarEl = document.getElementById('touch-bar');
+
   function onResize() {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    touchBarH = touchBarEl && touchBarEl.classList.contains('show') ? touchBarEl.offsetHeight : 0;
   }
   window.addEventListener('resize', onResize);
   onResize();
@@ -751,12 +762,13 @@ function runOnline({ ws, welcome }, { mode, name }) {
     const oi = 130;
     orient.render(renderer, { x: 16, y: H - 16 - oi, w: oi, h: oi });
     const rw = Math.min(320, W * 0.34), rh = rw * 0.6;
-    radar.render(renderer, { x: W - 16 - rw, y: 16, w: rw, h: rh });
+    const radarBottom = 16 + touchBarH; // clear of #touch-bar's thrust/missile zones
+    radar.render(renderer, { x: W - 16 - rw, y: radarBottom, w: rw, h: rh });
     renderer.setViewport(0, 0, W, H);
 
     const lockTarget = computeLock(W, H);
     player.lockTarget = lockTarget;
-    hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
+    hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: radarBottom, h: rh });
     const roster = [{ id: welcome.playerId, n: myName, hull: player.hull, maxHull: player.maxHull, a: player.alive, rt: rtt }];
     for (const o of world.others) roster.push({ id: o.id, n: o.name, hull: o.hull, maxHull: o.maxHull, a: o.alive, rt: o.rtt || 0 });
 

@@ -16,6 +16,7 @@
     "turnFactor": 1.9,
     "rollRate": 2.0,
     "mouseGain": 0.0042,
+    "touchGain": 0.012,
     "intentLag": 8,
     "mouseRecenter": 0.35,
     "hitPulseDecay": 3.5,

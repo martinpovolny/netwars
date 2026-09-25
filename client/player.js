@@ -40,6 +40,7 @@ export class Player {
     // stepShip() reads it. These are client-side feel knobs only:
     this.maxSpeed = K.player.maxSpeed;   // kept for the V-gauge readout
     this.mouseGain = K.player.mouseGain;
+    this.touchGain = K.player.touchGain;
     this.intentLag = K.player.intentLag;
     this.mouseRecenter = K.player.mouseRecenter;
     this.gunInterval = K.player.gunInterval;
@@ -66,11 +67,21 @@ export class Player {
     if (!this.alive) return;
 
     // --- cursor + deployed intent marker ---
-    const m = input.takeMouse();
-    this.mouse.x = THREE.MathUtils.clamp(this.mouse.x + m.x * this.mouseGain, -1, 1);
-    this.mouse.y = THREE.MathUtils.clamp(this.mouse.y + m.y * this.mouseGain, -1, 1);
-    const rc = Math.max(0, 1 - this.mouseRecenter * dt);
-    this.mouse.multiplyScalar(rc);
+    if (input.hasSteerTouch && input.hasSteerTouch()) {
+      // touch: an absolute joystick position (offset from where the finger
+      // touched down), not a delta — held steady, it HOLDS, unlike the
+      // mouse's recenter-on-no-input below, which would otherwise fight a
+      // touch that's just being held in place rather than actively dragged.
+      const off = input.steerOffset();
+      this.mouse.x = THREE.MathUtils.clamp(off.x * this.touchGain, -1, 1);
+      this.mouse.y = THREE.MathUtils.clamp(off.y * this.touchGain, -1, 1);
+    } else {
+      const m = input.takeMouse();
+      this.mouse.x = THREE.MathUtils.clamp(this.mouse.x + m.x * this.mouseGain, -1, 1);
+      this.mouse.y = THREE.MathUtils.clamp(this.mouse.y + m.y * this.mouseGain, -1, 1);
+      const rc = Math.max(0, 1 - this.mouseRecenter * dt);
+      this.mouse.multiplyScalar(rc);
+    }
 
     const k = 1 - Math.exp(-this.intentLag * dt);
     this.intent.x += (this.mouse.x - this.intent.x) * k;

@@ -63,6 +63,8 @@
 
   /* bottom-left: velocity gauge (hull is the top bar + hit vignette) */
   #gauges { position: absolute; left: 20px; bottom: 20px; display: flex; gap: 14px; align-items: flex-end; }
+  /* clear #touch-bar's thrust zone (it's a sibling, earlier in the DOM) */
+  #touch-bar.show ~ #hud #gauges { bottom: calc(20px + 14vh); }
   .gauge {
     position: relative; width: 26px; height: 150px;
     border: 2px solid var(--green); background: rgba(0,0,0,0.35);
@@ -217,6 +219,33 @@
   #paused.show { display: block; }
   #paused .sub { display: block; margin-top: 10px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
   #dead .key { display: block; margin-top: 4px; font-size: 14px; color: var(--green); letter-spacing: 1px; }
+
+  /* touch controls (mobile only — Input.attachTouchBar() adds .show after
+     detecting a touch-capable device). 1 finger on the canvas steers, 2
+     fingers fire; this bar covers the rest: hold the wide zone to thrust,
+     tap-and-hold the narrow one to fire a missile. */
+  #touch-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 14vh; min-height: 74px;
+    z-index: 45; display: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  #touch-bar.show { display: flex; }
+  #touch-thrust, #touch-missile {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; letter-spacing: 3px; text-transform: uppercase;
+    transition: background-color 80ms, opacity 80ms;
+  }
+  #touch-thrust {
+    flex: 1; background: rgba(53, 224, 74, 0.08); border-top: 1px solid var(--green);
+    color: var(--green); opacity: 0.65;
+  }
+  #touch-thrust.active { background: rgba(53, 224, 74, 0.3); opacity: 1; }
+  #touch-missile {
+    width: 24vw; max-width: 150px;
+    background: rgba(255, 43, 43, 0.1); border-top: 1px solid var(--amber); border-left: 1px solid var(--amber);
+    color: var(--amber); opacity: 0.7;
+  }
+  #touch-missile.active { background: rgba(255, 43, 43, 0.35); opacity: 1; }
 
   /* deathmatch: a frag/time limit ends the match — frozen results + a
      countdown to the next one. Styled like #paused but bigger, and colored
@@ -434,6 +463,11 @@
 </div>
 
 <button id="pause-btn" type="button">&#10074;&#10074; Pause</button>
+
+<div id="touch-bar">
+  <div id="touch-thrust">Thrust</div>
+  <div id="touch-missile">Msl</div>
+</div>
 
 <div id="settings">
   <div class="settings-h">SETTINGS</div>

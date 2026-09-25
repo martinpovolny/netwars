@@ -47,6 +47,7 @@ rim.position.set(-0.5, -0.3, -0.7);
 scene.add(rim);
 
 const input = new Input(canvas);
+input.attachTouchBar();
 const audio = new Audio();
 const player = new Player();
 const weapons = new Weapons(scene);
@@ -74,7 +75,9 @@ let deadAt = 0;          // performance.now() when the player was destroyed
 
 window.__nw = { scene, camera, player, world, enemies, pods, bonuses, weapons, explosions, environment, radar, input, audio, hud, settings, paused: false, get score() { return world.score; }, get state() { return world.fsm.state; } };
 
-canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
+const firstGesture = () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); };
+canvas.addEventListener('mousedown', firstGesture, { once: true });
+canvas.addEventListener('touchstart', firstGesture, { once: true, passive: true });
 
 // pause: freezes the whole sim (SP only — a network game can't pause other
 // people's clocks). window.__nw.paused already gated the world tick before
@@ -123,12 +126,20 @@ function startLevel(n) {
   hud.flash('LEVEL ' + n, 2.2);
 }
 
+// height of #touch-bar in px (0 when not shown) — read once per resize
+// rather than every frame (offsetHeight forces a layout reflow), so the
+// radar/gauges can be pushed clear of it without hardcoding its CSS height
+// a second time here.
+let touchBarH = 0;
+const touchBarEl = document.getElementById('touch-bar');
+
 function onResize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  touchBarH = touchBarEl && touchBarEl.classList.contains('show') ? touchBarEl.offsetHeight : 0;
 }
 window.addEventListener('resize', onResize);
 onResize();
@@ -298,7 +309,8 @@ function frame(now) {
 
   const rw = Math.min(320, W * 0.34);
   const rh = rw * 0.6;
-  radar.render(renderer, { x: W - 16 - rw, y: 16, w: rw, h: rh });
+  const radarBottom = 16 + touchBarH; // clear of #touch-bar's thrust/missile zones
+  radar.render(renderer, { x: W - 16 - rw, y: radarBottom, w: rw, h: rh });
 
   renderer.setViewport(0, 0, W, H);
 
@@ -307,7 +319,7 @@ function frame(now) {
   const lockTarget = computeLock(W, H);
   player.lockTarget = lockTarget;
 
-  hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
+  hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: radarBottom, h: rh });
   hud.update(dt, player, enemies, pods, world.score, radar, {
     locked: !!lockTarget,
     missileActive: weapons.playerMissileActive(),

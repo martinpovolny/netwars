@@ -1,4 +1,22 @@
-// Keyboard state + pointer-lock mouse deltas.
+// Keyboard state + pointer-lock mouse deltas + touch controls.
+//
+// Touch scheme (no pointer lock on mobile — it's either unsupported (iOS
+// Safari on a touchscreen) or a bad idea anyway):
+//   - 1 finger anywhere on the canvas: steer. Unlike the mouse (which
+//     accumulates relative deltas), touch tracks the ABSOLUTE offset from
+//     where that finger first touched down — Player#update reads it as a
+//     held joystick position (see hasSteerTouch/steerOffset), not a delta,
+//     so it doesn't decay back toward centre while the finger is just held
+//     still (the mouse's recenter-on-no-input behavior would otherwise fight
+//     a held touch every frame).
+//   - 2 fingers down on the canvas: cannon fire, for as long as both are
+//     held — reuses `mouseFire`, same flag the desktop "hold LMB" sets.
+//   - the bottom touch-bar (client/index.html #touch-bar, only shown when
+//     Input detects a touch-capable device) is separate DOM, outside the
+//     canvas: its thrust zone synthesizes the KeyW hold, its missile button
+//     synthesizes a held mouseRight — both by feeding the exact state this
+//     class already tracks, so nothing downstream needs to know the input
+//     came from a touch bar and not a keyboard/mouse.
 export class Input {
   constructor(dom) {
     this.dom = dom;
@@ -8,6 +26,11 @@ export class Input {
     this.locked = false;
     this.mouseFire = false;
     this.mouseRight = false;
+    this.isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+    // the one touch driving steering — { id, startX, startY, x, y } or null
+    this._steer = null;
+    this._touchCount = 0; // fingers currently down on the canvas
 
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
@@ -34,6 +57,8 @@ export class Input {
       if (e.button === 2) this.mouseRight = false;
     });
     dom.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    if (this.isTouch) this._initTouch(dom);
   }
 
   has(code) { return this.keys.has(code); }
@@ -44,6 +69,68 @@ export class Input {
     this._mx = 0;
     this._my = 0;
     return m;
+  }
+
+  hasSteerTouch() { return this._steer !== null; }
+  // absolute CSS-pixel offset of the steer finger from where it touched down
+  steerOffset() { return this._steer ? { x: this._steer.x - this._steer.startX, y: this._steer.y - this._steer.startY } : { x: 0, y: 0 }; }
+
+  _initTouch(dom) {
+    const start = (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        if (!this._steer) this._steer = { id: t.identifier, startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY };
+      }
+      this._touchCount = e.touches.length;
+      this.mouseFire = this._touchCount >= 2;
+    };
+    const move = (e) => {
+      e.preventDefault();
+      if (!this._steer) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier === this._steer.id) { this._steer.x = t.clientX; this._steer.y = t.clientY; break; }
+      }
+    };
+    const end = (e) => {
+      e.preventDefault();
+      if (this._steer && [...e.changedTouches].some((t) => t.identifier === this._steer.id)) {
+        // hand steering to another finger still down, if any, rather than
+        // snapping to 0 — its own start point resets here so it doesn't
+        // jump to wherever the old finger's offset was
+        const next = [...e.touches][0];
+        this._steer = next ? { id: next.identifier, startX: next.clientX, startY: next.clientY, x: next.clientX, y: next.clientY } : null;
+      }
+      this._touchCount = e.touches.length;
+      this.mouseFire = this._touchCount >= 2;
+    };
+    dom.addEventListener('touchstart', start, { passive: false });
+    dom.addEventListener('touchmove', move, { passive: false });
+    dom.addEventListener('touchend', end, { passive: false });
+    dom.addEventListener('touchcancel', end, { passive: false });
+  }
+
+  // Wires up #touch-bar (thrust zone + missile button) if this device is
+  // touch-capable; a harmless no-op on desktop. Separate from the
+  // constructor's canvas listeners since the bar is its own DOM, outside
+  // `dom`, and may not exist on every page (e.g. tools/golden.html).
+  attachTouchBar() {
+    if (!this.isTouch) return;
+    const bar = document.getElementById('touch-bar');
+    if (!bar) return;
+    bar.classList.add('show');
+
+    const thrust = document.getElementById('touch-thrust');
+    const held = (el, onDown, onUp) => {
+      const down = (e) => { e.preventDefault(); el.classList.add('active'); onDown(); };
+      const up = (e) => { e.preventDefault(); if (e.targetTouches.length > 0) return; el.classList.remove('active'); onUp(); };
+      el.addEventListener('touchstart', down, { passive: false });
+      el.addEventListener('touchend', up, { passive: false });
+      el.addEventListener('touchcancel', up, { passive: false });
+    };
+    held(thrust, () => this.keys.add('KeyW'), () => this.keys.delete('KeyW'));
+
+    const missile = document.getElementById('touch-missile');
+    held(missile, () => { this.mouseRight = true; }, () => { this.mouseRight = false; });
   }
 }
 
