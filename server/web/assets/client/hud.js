@@ -1,4 +1,5 @@
 import { ENEMY_TYPES } from './levels.js';
+import { scoreRowsHtml } from './scoretable.js';
 
 // deathmatch time-limit countdown, m:ss (rounds up so it never flashes 0:00
 // a tick before the match actually ends).
@@ -100,10 +101,7 @@ export class HUD {
   showTable(entries, { highlightRank = null, recorded = true } = {}) {
     this.goEntry.classList.remove('show');
     this.goName.blur();
-    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    this.goTable.innerHTML = entries.map((en, i) =>
-      `<tr${highlightRank === i + 1 ? ' class="me"' : ''}><td class="num">${i + 1}.</td><td>${esc(en.name)}</td>` +
-      `<td class="num">L${Number(en.level) | 0}</td><td class="num">${String(Number(en.score) | 0).padStart(6, '0')}</td></tr>`).join('');
+    this.goTable.innerHTML = scoreRowsHtml(entries, highlightRank);
     this.goTable.classList.toggle('show', entries.length > 0);
     if (!recorded) this.goSub.textContent += '  (not recorded)';
     this.goKey.textContent = 'press any key or tap to play again';

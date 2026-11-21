@@ -75,7 +75,8 @@ If the game is served by `netwars-server` (or the URL hash carries `?server_id=<
 can then enter a name and see the world-wide **top 10** (ranked by level
 reached, then score). The name is remembered in your browser's local storage,
 so next time just press ENTER (ESC skips). With no server reachable the game
-works exactly the same — it just doesn't record or show a table.
+works exactly the same — it just doesn't record or show a table. The same
+top 10 is shown on the title screen, under LAUNCH.
 The server keeps the table in a JSON file (`-scores`, default `scores.json`).
 
 ## Objective — protect the pods
