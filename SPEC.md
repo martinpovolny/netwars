@@ -137,14 +137,18 @@ No guidance. 8 dmg. Rendered as dim additive tracers (grey-cyan, small).
 deathmatch) — the next `guidedRounds` (50) cannon *shots* home on a target.
 - **Targeting:** each shot locks the live enemy **nearest the crosshair** — the
   smallest angle off the ship's nose — and only inside a cone of
-  `guidedConeDeg` (30°) around it. Enemies behind you or off to the side are
+  `guidedConeDeg` (45°) around it. Enemies behind you or off to the side are
   never chosen, however close. Equal angles go to the nearer enemy. Both bolts
   of the pair share the target. (Implemented twice: `client/aim.js` for
   single-player, `server/game/guided.go` for co-op; same rule, both tested.)
 - **Ammo:** a round is spent only when a shot actually locks. Nothing in the
   cone → the shot flies unguided and the round is kept.
-- **Guidance:** soft homing (`guidedBoltGuideDelay` 0.05 s, `guidedBoltGuideRate`
-  0.25) — gentler than a missile.
+- **Guidance:** moderate homing (`guidedBoltGuideDelay` 0.05 s,
+  `guidedBoltGuideRate` 0.05 — the fraction of the heading error left after one
+  second; smaller = stronger) — deliberately weaker than a missile (0.01). It
+  steers at the target's *current* position (no lead), so it fixes a shot that
+  is a few degrees off, not a badly led crossing shot. Tuned with a simulation:
+  at 0.25 a bolt could not even reach a stationary target 8° off the nose.
 - **Look:** guided bolts are **purple** (same as the bonus pickup and the HUD's
   `Guided` counter), slightly larger and with a longer trail than the dull grey
   cannon tracers, so you can see which shots are homing. In co-op the server
