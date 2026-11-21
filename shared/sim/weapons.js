@@ -3,8 +3,10 @@
 // collisions, applying gameplay outcomes (hp, dead, ttl) and returning a list
 // of events for the caller to turn into FX + sound. No THREE meshes, no DOM.
 import { Vector3 } from './vec.js';
+import { interceptPoint } from './intercept.js';
 
 const _tmp = new Vector3();
+const _ZERO = { x: 0, y: 0, z: 0 };   // target with no velocity (e.g. a store without one)
 
 export class Projectiles {
   constructor(K) {
@@ -78,7 +80,11 @@ export class Projectiles {
         // as long as a bolt's own (much shorter) ttl already does.
         const tgt = this.target[i];
         if (this.age[i] > KW.guidedBoltGuideDelay && !tgt.dead) {
-          const desired = _tmp.copy(tgt.position).sub(this.pos[i]).normalize().multiplyScalar(this.vel[i].length());
+          // steer at where the target will be when the bolt gets there
+          // (first-order lead), not where it is now
+          const speed = this.vel[i].length();
+          const aim = interceptPoint(this.pos[i], speed, tgt.position, tgt.velocity || _ZERO, KW.guidedLead, KW.guidedLeadMaxT);
+          const desired = _tmp.set(aim.x, aim.y, aim.z).sub(this.pos[i]).normalize().multiplyScalar(speed);
           this.vel[i].lerp(desired, 1 - Math.pow(KW.guidedBoltGuideRate, dt));
         }
       }

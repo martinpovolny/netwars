@@ -148,10 +148,18 @@ deathmatch) — the next `guidedRounds` (50) cannon *shots* home on a target.
   cone → the shot flies unguided and the round is kept.
 - **Guidance:** moderate homing (`guidedBoltGuideDelay` 0.05 s,
   `guidedBoltGuideRate` 0.05 — the fraction of the heading error left after one
-  second; smaller = stronger) — deliberately weaker than a missile (0.01). It
-  steers at the target's *current* position (no lead), so it fixes a shot that
-  is a few degrees off, not a badly led crossing shot. Tuned with a simulation:
-  at 0.25 a bolt could not even reach a stationary target 8° off the nose.
+  second; smaller = stronger) — deliberately weaker than a missile (0.01).
+  Tuned with a simulation: at 0.25 a bolt could not even reach a stationary
+  target 8° off the nose.
+- **Lead:** the bolt steers at where the target *will be* when the bolt gets
+  there — a first-order intercept using the target's velocity
+  (`guidedLead` 1 = full lead, 0 = aim at the current position;
+  `guidedLeadMaxT` 1.5 s caps the flight time used, so far or fleeing targets
+  are not led absurdly). So you put the crosshair on the enemy and fire; you
+  don't have to lead it by hand. Missiles still steer at the current position.
+  (`shared/sim/intercept.js` for single-player and the Go server's copy in
+  `guided.go`; both unit-tested. It assumes constant velocity, so a swerving
+  enemy can still dodge.)
 - **Look:** guided bolts are **purple** (same as the bonus pickup and the HUD's
   `Guided` counter), slightly larger and with a longer trail than the dull grey
   cannon tracers, so you can see which shots are homing. In co-op the server
