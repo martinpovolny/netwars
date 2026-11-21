@@ -261,6 +261,13 @@
     font: inherit; font-size: 20px; letter-spacing: 3px; text-align: center; width: 12em;
     color: #fff; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--green); padding: 6px 10px;
   }
+  .go-btns { margin-top: 12px; }
+  .go-btns button {
+    font: inherit; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; cursor: pointer;
+    margin: 0 6px; padding: 10px 22px; min-width: 96px; /* finger-sized */
+    background: rgba(0, 0, 0, 0.5); color: var(--green); border: 1px solid var(--green);
+  }
+  .go-btns button:hover, .go-btns button:active { background: rgba(53, 224, 74, 0.2); }
   #go-name:focus { outline: none; box-shadow: 0 0 14px rgba(53, 224, 74, 0.5); }
   #go-table { margin-top: 16px; display: none; font-size: 14px; letter-spacing: 1px; }
   #go-table.show { display: table; margin-left: auto; margin-right: auto; }
@@ -519,7 +526,7 @@
   <div id="msg"></div>
   <div id="dead">Ship Destroyed
     <span class="sub" id="dead-sub"></span>
-    <span class="key">watching the battle · press any key to relaunch</span>
+    <span class="key">watching the battle · press any key or tap to relaunch</span>
   </div>
   <div id="paused">Paused
     <span class="sub">press P or click Pause to resume</span>
@@ -531,7 +538,10 @@
   <div id="gameover">
     <div class="title">GAME OVER</div>
     <span class="sub" id="go-sub"></span>
-    <div id="go-entry"><input type="text" id="go-name" maxlength="16" placeholder="Pilot" autocomplete="off" spellcheck="false"></div>
+    <div id="go-entry">
+      <input type="text" id="go-name" maxlength="16" placeholder="Pilot" autocomplete="off" spellcheck="false" enterkeyhint="send">
+      <div class="go-btns"><button type="button" id="go-submit">Submit</button><button type="button" id="go-skip">Skip</button></div>
+    </div>
     <table id="go-table"></table>
     <span class="key" id="go-key"></span>
   </div>

@@ -18,6 +18,7 @@ import K from '../shared/constants.js';
 import { makeWorld, startWorldLevel, stepWorld } from '../shared/sim/world.js';
 import { showFatalError } from './webgl.js';
 import { Run } from './run.js';
+import { tapAction } from './taps.js';
 import { loadName, saveName, scoresUrl, fetchScores, submitScore } from './scores.js';
 
 const canvas = document.getElementById('view');
@@ -138,9 +139,22 @@ function newRun() {
   startLevel(1);
 }
 
+// Touch / mouse: a tap relaunches a dead ship and dismisses the game-over
+// screen (phones have no "any key"). The pause button, settings panel and the
+// name prompt's own buttons keep their own taps.
+window.addEventListener('pointerdown', (e) => {
+  if (e.target.closest?.('#pause-btn, #settings, #go-entry')) return;
+  const act = tapAction({ alive: player.alive, goState, now: performance.now(), deadAt, goReadyAt });
+  if (act === 'respawn') player.respawn();
+  else if (act === 'newRun') newRun();
+});
+document.getElementById('go-submit')?.addEventListener('click', () => { if (goState === 'entry') submitName(); });
+document.getElementById('go-skip')?.addEventListener('click', () => { if (goState === 'entry') skipSubmit(); });
+
 function onGameOverKey(e) {
   if (goState === 'entry') {
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') submitName();
+    // e.key too: virtual keyboards don't always report a useful e.code
+    if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.key === 'Enter') submitName();
     else if (e.code === 'Escape') skipSubmit();
   } else if ((goState === 'table' || goState === 'plain') && performance.now() >= goReadyAt) {
     newRun();
