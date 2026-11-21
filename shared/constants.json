@@ -49,7 +49,9 @@
     "missileGuideRate": 0.01,
     "missileInterceptRadius": 20,
     "guidedBoltGuideDelay": 0.05,
-    "guidedBoltGuideRate": 0.05
+    "guidedBoltGuideRate": 0.05,
+    "guidedLead": 1,
+    "guidedLeadMaxT": 1.5
   },
 
   "enemy": {

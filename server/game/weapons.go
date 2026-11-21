@@ -16,6 +16,7 @@ const (
 // or another player's ship in deathmatch.
 type guideTarget interface {
 	GuidePos() Vec3
+	GuideVel() Vec3 // lets the guided cannon lead a moving target
 	GuideDead() bool
 }
 
@@ -105,8 +106,11 @@ func (p *Projectiles) Step(dt float64, w *World) []Event {
 			if p.Age[i] > kw["guidedBoltGuideDelay"] {
 				tgt := p.Target[i]
 				if !tgt.GuideDead() {
-					desired := tgt.GuidePos()
-					desired.Sub(p.Pos[i]).Normalize().MultiplyScalar(p.Vel[i].Length())
+					// steer at where the target will be when the bolt gets
+					// there (first-order lead), not where it is now
+					speed := p.Vel[i].Length()
+					desired := interceptPoint(p.Pos[i], speed, tgt.GuidePos(), tgt.GuideVel(), kw["guidedLead"], kw["guidedLeadMaxT"])
+					desired.Sub(p.Pos[i]).Normalize().MultiplyScalar(speed)
 					p.Vel[i].Lerp(desired, 1-math.Pow(kw["guidedBoltGuideRate"], dt))
 				}
 			}

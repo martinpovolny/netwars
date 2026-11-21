@@ -31,6 +31,7 @@ type Ship struct {
 // GuidePos / GuideDead satisfy guideTarget (weapons.go) — a deathmatch
 // missile locked on another player's ship homes on it.
 func (s *Ship) GuidePos() Vec3  { return s.Pos }
+func (s *Ship) GuideVel() Vec3  { return s.Vel }
 func (s *Ship) GuideDead() bool { return s == nil || !s.Alive }
 
 // Damage — Player.damage without the audio side effect.
