@@ -103,7 +103,7 @@ export class HUD {
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     this.goTable.innerHTML = entries.map((en, i) =>
       `<tr${highlightRank === i + 1 ? ' class="me"' : ''}><td class="num">${i + 1}.</td><td>${esc(en.name)}</td>` +
-      `<td class="num">L${en.level}</td><td class="num">${String(en.score).padStart(6, '0')}</td></tr>`).join('');
+      `<td class="num">L${Number(en.level) | 0}</td><td class="num">${String(Number(en.score) | 0).padStart(6, '0')}</td></tr>`).join('');
     this.goTable.classList.toggle('show', entries.length > 0);
     if (!recorded) this.goSub.textContent += '  (not recorded)';
     this.goKey.textContent = 'press any key to play again';

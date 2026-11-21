@@ -107,15 +107,19 @@ async function submitName() {
   goState = 'submitting';
   const name = hud.nameValue.trim() || loadName() || 'Pilot';
   const entry = { name, level: world.fleet.level, score: totalScore() };
-  const res = await submitScore(SCORES_URL, entry);
-  if (res) {
-    saveName(name);
-    hud.showTable(res.table, { highlightRank: res.rank, recorded: true });
-  } else {
-    hud.showTable(goTable, { recorded: false });
+  try {
+    const res = await submitScore(SCORES_URL, entry);
+    if (res) {
+      saveName(name);
+      hud.showTable(res.table, { highlightRank: res.rank, recorded: true });
+    } else {
+      hud.showTable(goTable, { recorded: false });
+    }
+  } finally {
+    // whatever happened above, game over must stay dismissable
+    goState = 'table';
+    goReadyAt = performance.now() + 500;
   }
-  goState = 'table';
-  goReadyAt = performance.now() + 500;
 }
 
 function skipSubmit() {

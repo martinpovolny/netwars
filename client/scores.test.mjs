@@ -80,3 +80,28 @@ test('submitScore -> null on 429, network error, wrong shape', async () => {
   assert.equal(await submitScore('/s', body, async () => { throw new Error('x'); }), null);
   assert.equal(await submitScore('/s', body, async () => okResponse({ rank: 1 })), null);
 });
+
+// --- review fixes: a malformed/hostile /scores response must be rejected, not rendered ---
+const BAD_TABLES = {
+  'null entry': [null],
+  'html in level': [{ name: 'a', level: '<img src=x onerror=alert(1)>', score: 1 }],
+  'html in score': [{ name: 'a', level: 1, score: '<b>' }],
+  'non-string name': [{ name: 5, level: 1, score: 1 }],
+  'float level': [{ name: 'a', level: 1.5, score: 1 }],
+  'missing fields': [{ name: 'a' }],
+};
+
+for (const [label, table] of Object.entries(BAD_TABLES)) {
+  test(`fetchScores rejects a table with ${label}`, async () => {
+    assert.equal(await fetchScores('/s', async () => okResponse(table)), null);
+  });
+  test(`submitScore rejects a table with ${label}`, async () => {
+    const res = await submitScore('/s', { name: 'a', level: 1, score: 1 }, async () => okResponse({ rank: 1, table }));
+    assert.equal(res, null);
+  });
+}
+
+test('submitScore rejects a non-integer, non-null rank', async () => {
+  const f = async () => okResponse({ rank: '1', table: TABLE });
+  assert.equal(await submitScore('/s', { name: 'a', level: 1, score: 1 }, f), null);
+});

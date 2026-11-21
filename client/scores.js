@@ -41,9 +41,17 @@ async function request(url, init, fetchFn, timeoutMs) {
   }
 }
 
+// The response comes from whatever host server_id names, so treat it as
+// untrusted: only well-formed rows ({name: string, level/score: integers})
+// ever reach the renderer.
+function validTable(t) {
+  return Array.isArray(t) && t.every((e) => e && typeof e === 'object'
+    && typeof e.name === 'string' && Number.isInteger(e.level) && Number.isInteger(e.score));
+}
+
 export async function fetchScores(url, fetchFn = globalThis.fetch, timeoutMs = 3000) {
   const data = await request(url, { method: 'GET' }, fetchFn, timeoutMs);
-  return Array.isArray(data) ? data : null;
+  return validTable(data) ? data : null;
 }
 
 export async function submitScore(url, { name, level, score }, fetchFn = globalThis.fetch, timeoutMs = 3000) {
@@ -52,6 +60,7 @@ export async function submitScore(url, { name, level, score }, fetchFn = globalT
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, level, score }),
   }, fetchFn, timeoutMs);
-  if (!data || !Array.isArray(data.table) || !('rank' in data)) return null;
+  if (!data || !validTable(data.table)) return null;
+  if (data.rank !== null && !Number.isInteger(data.rank)) return null;
   return { rank: data.rank, table: data.table };
 }
