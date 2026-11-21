@@ -17,6 +17,8 @@ import { PODS_PER_LEVEL, ENEMY_TYPES, goalsForLevel } from './levels.js';
 import K from '../shared/constants.js';
 import { makeWorld, startWorldLevel, stepWorld } from '../shared/sim/world.js';
 import { showFatalError } from './webgl.js';
+import { Run } from './run.js';
+import { loadName, saveName, scoresUrl, fetchScores, submitScore } from './scores.js';
 
 const canvas = document.getElementById('view');
 let renderer;
@@ -72,7 +74,80 @@ bonuses.attach(world.bonuses);
 
 let deadAt = 0;          // performance.now() when the player was destroyed
 
-window.__nw = { scene, camera, player, world, enemies, pods, bonuses, weapons, explosions, environment, radar, input, audio, hud, settings, paused: false, get score() { return world.score; }, get state() { return world.fsm.state; } };
+// ---- run state + high scores -------------------------------------------
+// Lives and the pod-rescue bonus live here (not in the shared sim, which the
+// Go server mirrors). Displayed/submitted score = kills + pod bonuses.
+let run = new Run();
+const totalScore = () => world.score + run.bonusScore;
+const SCORES_URL = scoresUrl(new URLSearchParams(location.hash.split('?')[1] || '').get('server_id'));
+let prevFsm = 'playing';
+// null while playing; else 'wait' (probing backend) | 'entry' (name prompt) |
+// 'submitting' | 'table' (results shown) | 'plain' (no backend: any key restarts)
+let goState = null;
+let goTable = null;       // the table fetched at game over (fallback if submit fails)
+let goReadyAt = 0;        // ignore keys until then so the submitting ENTER can't dismiss the table
+
+async function beginGameOver() {
+  goState = 'wait';
+  if (document.pointerLockElement) document.exitPointerLock?.();
+  const result = () => ({ level: world.fleet.level, score: totalScore() });
+  hud.showGameOver({ ...result(), waiting: true });
+  goTable = await fetchScores(SCORES_URL);
+  if (goTable) {
+    goState = 'entry';
+    hud.showGameOver({ ...result(), canSubmit: true, defaultName: loadName() });
+  } else {
+    goState = 'plain';
+    goReadyAt = performance.now() + 500;
+    hud.showGameOver(result());
+  }
+}
+
+async function submitName() {
+  goState = 'submitting';
+  const name = hud.nameValue.trim() || loadName() || 'Pilot';
+  const entry = { name, level: world.fleet.level, score: totalScore() };
+  try {
+    const res = await submitScore(SCORES_URL, entry);
+    if (res) {
+      saveName(name);
+      hud.showTable(res.table, { highlightRank: res.rank, recorded: true });
+    } else {
+      hud.showTable(goTable, { recorded: false });
+    }
+  } finally {
+    // whatever happened above, game over must stay dismissable
+    goState = 'table';
+    goReadyAt = performance.now() + 500;
+  }
+}
+
+function skipSubmit() {
+  hud.showTable(goTable, { recorded: true });   // skipped on purpose: no "(not recorded)"
+  goState = 'table';
+  goReadyAt = performance.now() + 500;
+}
+
+function newRun() {
+  hud.hideGameOver();
+  goState = null;
+  run = new Run();
+  world.score = 0;
+  prevFsm = 'playing';
+  input.keys.clear();
+  startLevel(1);
+}
+
+function onGameOverKey(e) {
+  if (goState === 'entry') {
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') submitName();
+    else if (e.code === 'Escape') skipSubmit();
+  } else if ((goState === 'table' || goState === 'plain') && performance.now() >= goReadyAt) {
+    newRun();
+  }
+}
+
+window.__nw = { scene, camera, player, world, enemies, pods, bonuses, weapons, explosions, environment, radar, input, audio, hud, settings, paused: false, get score() { return world.score; }, get run() { return run; }, get state() { return world.fsm.state; } };
 
 canvas.addEventListener('mousedown', () => { goFullscreen(); audio.resume(); audio.startMusicIfWanted(); hud.hideHelp(); }, { once: true });
 
@@ -93,6 +168,8 @@ pauseBtn.addEventListener('click', () => setPaused(!window.__nw.paused));
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
+  // game over owns the keyboard (the name field must get every key untouched)
+  if (goState) { onGameOverKey(e); return; }
   // settings panel first: while it's open, up/down/left/right/escape belong
   // to it, not flight or any other single-key toggle below.
   if (settings.handleKey(e.code)) return;
@@ -211,7 +288,7 @@ function frame(now) {
   // settings doesn't touch window.__nw.paused itself (that also shows the
   // "Paused" banner, which would double up with the settings panel), it
   // just gets ORed in here.
-  const paused = window.__nw.paused || settings.isOpen;
+  const paused = window.__nw.paused || settings.isOpen || goState !== null;
   const simDt = paused ? 0 : dt;
 
   // client-predicted own ship — fully skipped while paused (not just given
@@ -246,18 +323,34 @@ function frame(now) {
   else if (radar.autoZoomMaxedOut) hud.flash('NO CONTACTS IN RANGE', 1.6);
   orient.update(player);
 
+  // lives / pod bonus, keyed off the level FSM's transitions (it sits in
+  // 'won'/'lost' for several frames, so act only on the change)
+  let flashNote = '';
+  if (world.fsm.state !== prevFsm) {
+    if (world.fsm.state === 'won') {
+      const bonus = run.levelCleared(world.fleet.level, pods.alive);
+      flashNote = `  ·  PODS +${bonus}  ·  +1 LIFE`;
+    } else if (world.fsm.state === 'lost') {
+      run.loseLife();
+    }
+    prevFsm = world.fsm.state;
+  }
+
   // player just died -> mark the moment, hold the spectator camera here
   if (wasAlive && !player.alive) {
+    run.loseLife();
     deadAt = now;
     specPos.copy(player.position);
     specQuat.copy(player.quaternion);
     hud.flash('', 0);
   }
 
+  if (run.isOver && goState === null) beginGameOver();
+
   // level (re)start happens here — after the render pass — so the transition
   // lands on the same frame as the pre-stepWorld code
   if (levelAction) {
-    if (levelAction.flash) hud.flash(levelAction.flash, levelAction.hold);
+    if (levelAction.flash) hud.flash(levelAction.flash + flashNote, levelAction.hold);
     if (levelAction.startLevel) startLevel(levelAction.startLevel);
   }
 
@@ -308,7 +401,8 @@ function frame(now) {
   player.lockTarget = lockTarget;
 
   hud.layout({ left: 16, top: 16, h: oi }, { right: 16, bottom: 16, h: rh });
-  hud.update(dt, player, enemies, pods, world.score, radar, {
+  hud.setLives(run.lives);
+  hud.update(dt, player, enemies, pods, totalScore(), radar, {
     locked: !!lockTarget,
     missileActive: weapons.playerMissileActive(),
     missileGuided: weapons.playerMissileGuided(),

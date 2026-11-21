@@ -14,7 +14,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/netwars-server -addr 127.0.0.1:8080
+ExecStart=/usr/local/bin/netwars-server -addr 127.0.0.1:8080 -scores /var/lib/netwars/scores.json
+# DynamicUser + ProtectSystem=strict: this is the one writable place, for the
+# high-score table (/var/lib/netwars/scores.json).
+StateDirectory=netwars
 Restart=on-failure
 RestartSec=2
 

@@ -65,6 +65,19 @@ When your hull hits 0 the whole world **freezes** and a `SHIP DESTROYED` panel
 shows your level and score; press any key (after a short beat) to relaunch in
 place with brief invulnerability. The level continues with whatever pods survived.
 
+### Lives and high scores (single-player)
+
+You start with **3 lives** (shown top-right). Losing your ship, or losing every
+pod in a level, costs a life; **clearing a level gives one back** (no cap) plus
+a pod bonus of `500 × pods alive × level`. Out of lives = **game over**.
+
+If the game is served by `netwars-server` (or the URL hash carries `?server_id=<host>`, as for co-op) you
+can then enter a name and see the world-wide **top 10** (ranked by level
+reached, then score). The name is remembered in your browser's local storage,
+so next time just press ENTER (ESC skips). With no server reachable the game
+works exactly the same — it just doesn't record or show a table.
+The server keeps the table in a JSON file (`-scores`, default `scores.json`).
+
 ## Objective — protect the pods
 
 Each level spawns a cluster of pink **pods** and a kill quota of enemies.
