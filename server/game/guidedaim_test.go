@@ -5,13 +5,57 @@ import "testing"
 // The guided cannon homes on the enemy nearest the player's CROSSHAIR — the
 // smallest angle off the nose, inside a cone — not nearest to the ship.
 
-func TestGuidedConeConstant(t *testing.T) {
+// Tuning: the cone is wide enough to lock a shot aimed roughly at the enemy,
+// and homing is moderate — clearly weaker than a missile (rate 0.01; a larger
+// rate means weaker homing) so the bolt still needs sensible aim, but strong
+// enough to bend onto a target a few degrees off the nose.
+func TestGuidedTuningConstants(t *testing.T) {
 	k, err := LoadConstants()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := k.Bonuses["guidedConeDeg"]; got != 30 {
-		t.Fatalf("bonuses.guidedConeDeg = %v, want 30", got)
+	if got := k.Bonuses["guidedConeDeg"]; got != 45 {
+		t.Errorf("bonuses.guidedConeDeg = %v, want 45", got)
+	}
+	if got := k.Weapons["guidedBoltGuideRate"]; got != 0.05 {
+		t.Errorf("weapons.guidedBoltGuideRate = %v, want 0.05", got)
+	}
+	if !(k.Weapons["guidedBoltGuideRate"] > k.Weapons["missileGuideRate"]) {
+		t.Errorf("guided bolts must stay gentler than missiles: bolt %v vs missile %v",
+			k.Weapons["guidedBoltGuideRate"], k.Weapons["missileGuideRate"])
+	}
+}
+
+// A locked bolt fired at a stationary enemy ~8 degrees off the nose, 1000 units
+// out, must reach it within its lifetime; the same shot unguided passes by.
+func TestGuidedBoltReachesNearlyAimedTarget(t *testing.T) {
+	k, err := LoadConstants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fly := func(guided bool) bool {
+		w := NewWorld(k, "guided-reach-seed")
+		tgt := &Enemy{ID: 1, Position: Vec3{X: 140.5, Z: -990}, HP: 100, Radius: 30}
+		w.Fleet.List = []*Enemy{tgt}
+		w.Ships = []*Ship{w.Ship}
+		var target guideTarget
+		if guided {
+			target = tgt
+		}
+		w.Projectiles.Spawn(Vec3{}, Vec3{Z: -1500}, teamPlayer, k.Player.BoltTtl, target, kindBolt, "p1")
+		for i := 0; i < 200; i++ {
+			w.Projectiles.Step(1.0/60.0, w)
+			if tgt.HP < 100 {
+				return true
+			}
+		}
+		return false
+	}
+	if fly(false) {
+		t.Fatal("test setup is wrong: an unguided bolt should miss a target 8 degrees off")
+	}
+	if !fly(true) {
+		t.Fatal("a guided bolt should bend onto a target 8 degrees off the nose within its lifetime")
 	}
 }
 
