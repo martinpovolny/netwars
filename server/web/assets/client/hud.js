@@ -86,12 +86,12 @@ export class HUD {
     this.goEntry.classList.toggle('show', canSubmit);
     this.goName.value = defaultName;
     if (canSubmit) {
-      this.goKey.textContent = 'type your name · ENTER to submit · ESC to skip';
+      this.goKey.textContent = 'type your name · ENTER or SUBMIT · ESC or SKIP';
       this.goName.focus();
       this.goName.select();
     } else {
       this.goName.blur();
-      this.goKey.textContent = waiting ? '' : 'press any key to play again';
+      this.goKey.textContent = waiting ? '' : 'press any key or tap to play again';
     }
   }
 
@@ -106,7 +106,7 @@ export class HUD {
       `<td class="num">L${Number(en.level) | 0}</td><td class="num">${String(Number(en.score) | 0).padStart(6, '0')}</td></tr>`).join('');
     this.goTable.classList.toggle('show', entries.length > 0);
     if (!recorded) this.goSub.textContent += '  (not recorded)';
-    this.goKey.textContent = 'press any key to play again';
+    this.goKey.textContent = 'press any key or tap to play again';
   }
 
   hideGameOver() {
