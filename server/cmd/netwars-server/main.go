@@ -25,6 +25,7 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address (plain ws; Caddy terminates TLS)")
 	origins := flag.String("origins", strings.Join(game.AllowedOrigins, ","),
 		"comma-separated host[:port] patterns allowed to open the arena WebSocket cross-origin (empty = same-origin only)")
+	scoresPath := flag.String("scores", "scores.json", "path of the high-score table (JSON, top 10; written atomically)")
 	flag.Parse()
 	game.AllowedOrigins = nil
 	for _, o := range strings.Split(*origins, ",") {
@@ -45,6 +46,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", game.Handler(ctx, sessions))
+	mux.HandleFunc("/scores", game.ScoresHandler(game.OpenScoreStore(*scoresPath)))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, "ok arenas=%d\n", sessions.Count())
 	})

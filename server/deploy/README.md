@@ -83,6 +83,13 @@ make healthz
 
 ## Notes
 
+- **High scores**: `GET/POST /scores`, backed by
+  `/var/lib/netwars/scores.json` (systemd `StateDirectory=netwars`; top 10,
+  written atomically). Delete the file and restart to reset the table. The
+  unit file changed when this was added, so the first deploy needs
+  `make install-unit` (re-copies the unit, reloads systemd) followed by
+  `make restart`; later deploys are just `make deploy`.
+
 - **Port**: change `-addr` in `deploy/netwars-server.service` if `8080` is
   taken; match it in `Caddyfile.snippet`.
 - **CORS**: the ws handler accepts any `Origin` right now
