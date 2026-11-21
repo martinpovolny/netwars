@@ -133,6 +133,23 @@ Two player weapons:
 from wing points, `gunInterval` ≈ 0.1 s. Muzzle 1500 u/s added to ship velocity.
 No guidance. 8 dmg. Rendered as dim additive tracers (grey-cyan, small).
 
+**Guided cannon** (bonus pickup, purple; single-player and co-op only, never
+deathmatch) — the next `guidedRounds` (50) cannon *shots* home on a target.
+- **Targeting:** each shot locks the live enemy **nearest the crosshair** — the
+  smallest angle off the ship's nose — and only inside a cone of
+  `guidedConeDeg` (30°) around it. Enemies behind you or off to the side are
+  never chosen, however close. Equal angles go to the nearer enemy. Both bolts
+  of the pair share the target. (Implemented twice: `client/aim.js` for
+  single-player, `server/game/guided.go` for co-op; same rule, both tested.)
+- **Ammo:** a round is spent only when a shot actually locks. Nothing in the
+  cone → the shot flies unguided and the round is kept.
+- **Guidance:** soft homing (`guidedBoltGuideDelay` 0.05 s, `guidedBoltGuideRate`
+  0.25) — gentler than a missile.
+- **Look:** guided bolts are **purple** (same as the bonus pickup and the HUD's
+  `Guided` counter), slightly larger and with a longer trail than the dull grey
+  cannon tracers, so you can see which shots are homing. In co-op the server
+  marks them as wire kind `gbolt` in snapshots (the sim kind stays `bolt`).
+
 **Missile** (secondary — `F` / RMB) — **guided**, **one on screen at a time**,
 **limited ammo** (`missiles` 16, no regen; refilled on respawn / new level).
 - Launches straight ahead: `velocity = shipVelocity + missileMuzzle·nose`

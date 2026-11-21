@@ -924,25 +924,16 @@ func (a *Arena) fireWeapons(p *Player) {
 	if p.wantGun && p.gunCd <= 0 {
 		p.gunCd = kp.GunInterval
 		// guided cannon (SP/co-op only — s.GuidedShots is never set in
-		// deathmatch, see spawnBonus's allowGuided): lock the nearest live
-		// enemy for both bolts of this shot and spend one of the rounds,
-		// even if there's nothing in the fleet to lock onto right now.
+		// deathmatch, see spawnBonus's allowGuided): lock the live enemy
+		// nearest the CROSSHAIR (inside guidedConeDeg) for both bolts of this
+		// shot and spend one round. No enemy in the cone: the shot flies
+		// unguided and the round is kept.
 		var target guideTarget
 		if s.GuidedShots > 0 {
-			var best *Enemy
-			bd := math.Inf(1)
-			for _, e := range a.world.Fleet.List {
-				if e.Dead {
-					continue
-				}
-				if d := e.Position.DistanceToSq(s.Pos); d < bd {
-					bd, best = d, e
-				}
-			}
-			if best != nil {
+			if best := pickGuidedTarget(s.Pos, fwdV, a.world.Fleet.List, a.k.Bonuses["guidedConeDeg"]); best != nil {
 				target = best
+				s.GuidedShots--
 			}
-			s.GuidedShots--
 		}
 		for _, side := range [2]float64{-1, 1} {
 			pos := s.Pos

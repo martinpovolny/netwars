@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { K } from '../shared/constants.js';
 import { Projectiles } from '../shared/sim/weapons.js';
+import { isGuidedBolt } from './aim.js';
 
 const FZ = new THREE.Vector3(0, 0, 1);
 
@@ -17,6 +18,8 @@ export class Weapons {
     this._matP = new THREE.MeshBasicMaterial({ color: 0x9fc4d0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7 });
     this._matE = new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 1 });
     this._matL = new THREE.MeshBasicMaterial({ color: 0x62d0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 1 }); // Guardian lance
+    // guided-cannon bolts: the same purple as the guided bonus pickup / HUD counter
+    this._matG = new THREE.MeshBasicMaterial({ color: 0xb26bff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 1 });
     const coreGeo = new THREE.OctahedronGeometry(1, 0);
     coreGeo.scale(1.1, 1.1, 4.5);
     const matCore = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7 });
@@ -79,6 +82,7 @@ export class Weapons {
     this._cBolt = new THREE.Color(0x7fa8b6);
     this._cE = new THREE.Color(0xff3a24);
     this._cL = new THREE.Color(0x62d0ff);
+    this._cG = new THREE.Color(0xb26bff);
     this._cMsl = new THREE.Color(0xffd23a);
     this._dir = new THREE.Vector3();
   }
@@ -129,8 +133,9 @@ export class Weapons {
       } else {
         const isLance = p.kind[i] === 'lance';
         const isEnemy = p.team[i] === 'enemy';
+        const isGuided = isGuidedBolt(p.kind[i], p.team[i], p.target ? p.target[i] : null);
         bolt.visible = true;
-        bolt.material = isLance ? this._matL : isEnemy ? this._matE : this._matP;
+        bolt.material = isLance ? this._matL : isEnemy ? this._matE : isGuided ? this._matG : this._matP;
         bolt.position.copy(p.pos[i]);
         if (speed > 1e-3) bolt.quaternion.setFromUnitVectors(FZ, this._dir);
         if (isLance) {
@@ -139,11 +144,13 @@ export class Weapons {
         } else if (isEnemy) {
           const pulse = 2.6 + 0.9 * Math.sin(p.age[i] * 42);
           bolt.scale.set(pulse, pulse, 1.7);
+        } else if (isGuided) {
+          bolt.scale.set(1.3, 1.3, 1.25);           // a touch bigger/brighter than the dull cannon
         } else {
           bolt.scale.set(1, 1, 1);
         }
-        const col = isLance ? this._cL : isEnemy ? this._cE : this._cBolt;
-        const trail = isLance ? 0.14 : isEnemy ? 0.07 : 0.04;
+        const col = isLance ? this._cL : isEnemy ? this._cE : isGuided ? this._cG : this._cBolt;
+        const trail = isLance ? 0.14 : isEnemy ? 0.07 : isGuided ? 0.055 : 0.04;
         tp[a] = p.pos[i].x; tp[a + 1] = p.pos[i].y; tp[a + 2] = p.pos[i].z;
         tp[a + 3] = p.pos[i].x - p.vel[i].x * trail;
         tp[a + 4] = p.pos[i].y - p.vel[i].y * trail;

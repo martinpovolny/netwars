@@ -5,9 +5,10 @@ import "testing"
 // Old NetWars had a bonus that made the cannon's shots gently home in on a
 // target — weaker and shorter-lived than a missile lock, and SP/co-op only,
 // never deathmatch. These tests cover: the bonus kind is gated by
-// allowGuided, applying it sets GuidedShots, firing while it's active locks
-// the nearest enemy and spends a round even with nothing to lock onto, and a
-// locked bolt actually curves toward its target over its (short) lifetime.
+// allowGuided, applying it sets GuidedShots, and a locked bolt actually curves
+// toward its target over its (short) lifetime. Which enemy a shot locks (the
+// one nearest the crosshair, inside a cone) and when a round is spent (only
+// on a lock) are covered in guidedaim_test.go.
 
 // spawnBonus must only ever produce "guided" when allowGuided is true — DM's
 // dmBonuses always passes false (see arena.go), so even with guidedChance
@@ -83,72 +84,8 @@ func TestApplyBonusGuidedSetsShots(t *testing.T) {
 	}
 }
 
-// Firing the cannon while GuidedShots > 0 locks the nearest live enemy onto
-// BOTH bolts of that shot (not just one) and spends exactly one round per
-// shot — not per bolt, even though the gun fires two bolts at once.
-func TestFireWeaponsGuidedCannonLocksNearestEnemy(t *testing.T) {
-	k, err := LoadConstants()
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := newArena(k, "unit-guided-fire", "coop", "guided-fire-seed", 0, 0)
-	p := joinBare(a)
-	p.Ship.GuidedShots = 5
-	p.wantGun = true
-	p.gunCd = 0
-
-	near := &Enemy{ID: 1, Position: Vec3{Z: -300}, HP: 10}
-	far := &Enemy{ID: 2, Position: Vec3{Z: -900}, HP: 10}
-	a.world.Fleet.List = []*Enemy{far, near}
-
-	before := a.world.Projectiles.Cursor
-	a.fireWeapons(p)
-	after := a.world.Projectiles.Cursor
-
-	if (after-before+a.world.Projectiles.Max)%a.world.Projectiles.Max != 2 {
-		t.Fatalf("expected exactly 2 bolts spawned, cursor moved from %d to %d", before, after)
-	}
-	for i := before; i != after; i = (i + 1) % a.world.Projectiles.Max {
-		tgt, ok := a.world.Projectiles.Target[i].(*Enemy)
-		if !ok || tgt != near {
-			t.Fatalf("bolt[%d] target = %+v, want the nearer enemy %+v", i, a.world.Projectiles.Target[i], near)
-		}
-	}
-	if p.Ship.GuidedShots != 4 {
-		t.Fatalf("GuidedShots = %d, want 4 (spent exactly 1 for this shot, not 2)", p.Ship.GuidedShots)
-	}
-}
-
-// With GuidedShots active but nothing alive to lock onto, the shot still
-// fires (ballistic, target nil) and still spends a round — "the next 50
-// rounds behave like that" isn't refunded just because nothing was in range.
-func TestFireWeaponsGuidedCannonNoTargetStillSpendsRound(t *testing.T) {
-	k, err := LoadConstants()
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := newArena(k, "unit-guided-fire-notarget", "coop", "guided-fire-notarget-seed", 0, 0)
-	p := joinBare(a)
-	p.Ship.GuidedShots = 5
-	p.wantGun = true
-	p.gunCd = 0
-	// a.world.Fleet.List is empty: nothing to lock onto
-
-	before := a.world.Projectiles.Cursor
-	a.fireWeapons(p)
-	after := a.world.Projectiles.Cursor
-	if (after-before+a.world.Projectiles.Max)%a.world.Projectiles.Max != 2 {
-		t.Fatalf("expected 2 bolts spawned even with no target, cursor moved from %d to %d", before, after)
-	}
-	for i := before; i != after; i = (i + 1) % a.world.Projectiles.Max {
-		if a.world.Projectiles.Target[i] != nil {
-			t.Fatalf("bolt[%d] should be ballistic (nil target) with no enemy alive: %+v", i, a.world.Projectiles.Target[i])
-		}
-	}
-	if p.Ship.GuidedShots != 4 {
-		t.Fatalf("GuidedShots = %d, want 4 (still spent, even with nothing to lock)", p.Ship.GuidedShots)
-	}
-}
+// (Cannon targeting + round-spending tests live in guidedaim_test.go: the
+// shot locks the enemy nearest the crosshair and only spends a round on a lock.)
 
 // A locked guided bolt actually curves toward its target over its lifetime —
 // not just a flag that does nothing.

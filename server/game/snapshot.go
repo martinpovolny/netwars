@@ -73,10 +73,22 @@ func BuildSnapshot(w *World, tick, ackSeq int, self *Ship, others []*Player) pro
 		}
 		s.Proj = append(s.Proj, proto.ProjS{
 			I: i, Pos: pv(w.Projectiles.Pos[i]), Vel: pv(w.Projectiles.Vel[i]),
-			Team: w.Projectiles.Team[i], Kind: w.Projectiles.Kind[i], Own: w.Projectiles.Owner[i],
+			Team: w.Projectiles.Team[i], Kind: wireKind(w.Projectiles, i), Own: w.Projectiles.Owner[i],
 		})
 	}
 	return s
+}
+
+// kindGuidedBolt is wire-only: a player bolt fired with a lock (guided-cannon
+// bonus) is sent as "gbolt" so clients can draw it in the guided colour. The
+// sim's own Kind stays "bolt".
+const kindGuidedBolt = "gbolt"
+
+func wireKind(p *Projectiles, i int) string {
+	if p.Kind[i] == kindBolt && p.Team[i] == teamPlayer && p.Target[i] != nil {
+		return kindGuidedBolt
+	}
+	return p.Kind[i]
 }
 
 // EventsToProto converts a StepWorld []Event to the wire form.
