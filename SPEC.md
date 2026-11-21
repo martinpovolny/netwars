@@ -54,6 +54,16 @@ Godot / Unity, raw WebGL. Revisit WebRTC only if WSS jitter proves unplayable.
    with ~2 s invulnerability. The level continues with the surviving pods.
 6. The campaign is endless — levels past the hand-authored table are generated
    and keep escalating. (No hard win screen yet; see §18.)
+7. **Single-player lives & high scores.** A run starts with 3 lives; losing
+   the ship or failing a level (all pods lost) costs one, clearing a level
+   awards one (uncapped) and a pod bonus of `500 × pods alive × level`. Out of
+   lives → game over → name prompt (remembered in `localStorage`, ENTER
+   submits) → world-wide top 10 from `GET/POST /scores` on the Go server
+   (ranked level desc, score desc, earlier first; validated, rate-limited,
+   atomically persisted). The game must run unchanged with no backend. Lives
+   and the pod bonus live in the SP client (`client/run.js`), not the shared
+   sim, so co-op/golden parity is unaffected. Design:
+   `docs/superpowers/specs/2026-11-21-highscores-design.md`.
 
 ## 4. Controls
 
