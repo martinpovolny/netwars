@@ -127,7 +127,8 @@
     "wantRepairBelow": 0.6,
     "wantMissilesBelow": 0.4,
     "guidedChance": 0.2,
-    "guidedRounds": 50
+    "guidedRounds": 50,
+    "guidedConeDeg": 30
   },
 
   "sim": {

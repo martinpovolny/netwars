@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { K } from '../shared/constants.js';
 import { stepShip } from '../shared/sim/flight.js';
+import { pickGuidedTarget } from './aim.js';
 
 const FWD = new THREE.Vector3(0, 0, -1);
 const RIGHT = new THREE.Vector3(1, 0, 0);
@@ -108,18 +109,14 @@ export class Player {
     if ((input.has('Space') || input.mouseFire) && this._gunCd <= 0) {
       this._gunCd = this.gunInterval;
       const muzzle = 1500;
-      // guided cannon bonus: lock the nearest live enemy for both bolts of
-      // this shot and spend one of the rounds, even if nothing's out there
-      // to lock onto right now.
+      // guided cannon bonus: lock the live enemy nearest the CROSSHAIR
+      // (inside K.bonuses.guidedConeDeg) for both bolts of this shot and
+      // spend one round. Nothing in the cone: the shot flies unguided and
+      // the round is kept.
       let target = null;
       if (this.guidedShots > 0) {
-        let bd = Infinity;
-        for (const e of enemies.list) {
-          if (e.dead) continue;
-          const d = e.position.distanceToSquared(this.position);
-          if (d < bd) { bd = d; target = e; }
-        }
-        this.guidedShots--;
+        target = pickGuidedTarget(this.position, fwd, enemies.list, K.bonuses.guidedConeDeg);
+        if (target) this.guidedShots--;
       }
       for (const side of [-1, 1]) {
         const p = this.position.clone()
