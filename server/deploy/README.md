@@ -88,7 +88,15 @@ make healthz
   written atomically). Delete the file and restart to reset the table. The
   unit file changed when this was added, so the first deploy needs
   `make install-unit` (re-copies the unit, reloads systemd) followed by
-  `make restart`; later deploys are just `make deploy`.
+  `make restart`; later deploys are just `make deploy`. `make deploy` only
+  replaces the binary, never the unit file — so after any change to
+  `netwars-server.service`, run `make install-unit && make restart`.
+  **Check it took:** `make healthz` must say `scores=ok`. `scores=READONLY(...)`
+  means the scores file can't be written (usually an old unit without
+  `-scores /var/lib/netwars/scores.json` + `StateDirectory=netwars`): every
+  submitted score is dropped, the server logs a `WARNING: scores: cannot write`
+  line at start and a `scores: could not save score` line per submit
+  (`make logs`), and players just see "(not recorded)" after entering a name.
 
 - **Port**: change `-addr` in `deploy/netwars-server.service` if `8080` is
   taken; match it in `Caddyfile.snippet`.

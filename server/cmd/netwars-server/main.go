@@ -46,9 +46,16 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", game.Handler(ctx, sessions))
-	mux.HandleFunc("/scores", game.ScoresHandler(game.OpenScoreStore(*scoresPath)))
+	scoreStore := game.OpenScoreStore(*scoresPath)
+	if err := scoreStore.Writable(); err != nil {
+		// not fatal (the game works without scores) but never silent: every
+		// score submitted would be dropped
+		log.Printf("WARNING: scores: cannot write next to %s (%v) — high scores will NOT be saved. "+
+			"Check -scores and, under systemd, StateDirectory= / ReadWritePaths=.", *scoresPath, err)
+	}
+	mux.HandleFunc("/scores", game.ScoresHandler(scoreStore))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprintf(w, "ok arenas=%d\n", sessions.Count())
+		fmt.Fprintf(w, "ok arenas=%d %s\n", sessions.Count(), game.ScoresStatus(scoreStore))
 	})
 	// everything else -> the embedded game client ("/" -> index.html).
 	// The client is unversioned ES modules; tell the browser to revalidate so

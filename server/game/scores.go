@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -90,6 +91,30 @@ func (s *ScoreStore) Submit(e Entry) (rank int, err error) {
 		}
 	}
 	return 0, nil
+}
+
+// Writable reports whether the scores file's directory accepts new files — the
+// thing Submit needs (it writes a temp file and renames it into place). It
+// creates and removes a probe file in that directory; the scores file itself is
+// never touched. Used at startup and by /healthz so a read-only deploy (e.g. a
+// systemd unit without StateDirectory) is loud instead of silently dropping
+// every score.
+func (s *ScoreStore) Writable() error {
+	f, err := os.CreateTemp(filepath.Dir(s.path), ".scores-probe-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	f.Close()
+	return os.Remove(name)
+}
+
+// ScoresStatus is the /healthz fragment: "scores=ok" or "scores=READONLY(cause)".
+func ScoresStatus(s *ScoreStore) string {
+	if err := s.Writable(); err != nil {
+		return "scores=READONLY(" + err.Error() + ")"
+	}
+	return "scores=ok"
 }
 
 func (s *ScoreStore) persist(entries []Entry) error {

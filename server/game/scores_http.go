@@ -2,6 +2,7 @@ package game
 
 import (
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -74,6 +75,7 @@ func (h *scoresHandler) post(w http.ResponseWriter, r *http.Request) {
 	}
 	rank, err := h.store.Submit(Entry{Name: name, Level: in.Level, Score: in.Score, At: h.now().UTC()})
 	if err != nil {
+		log.Printf("scores: could not save score (name %q, level %d, score %d): %v", name, in.Level, in.Score, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save score"})
 		return
 	}
