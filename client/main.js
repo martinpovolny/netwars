@@ -8,6 +8,8 @@
 // before joining.
 
 import { hasWebGL, showFatalError } from './webgl.js';
+import { fetchScores, scoresUrl } from './scores.js';
+import { scoreRowsHtml } from './scoretable.js';
 
 // Fail fast, before the player ever sees LAUNCH: sp.js and net.js both
 // build a THREE.WebGLRenderer as one of their first acts, which throws if
@@ -108,6 +110,18 @@ async function launch() {
   const { startNetwork } = await import('./net.js');
   startNetwork({ session, serverId: hp.get('server_id'), mode, name, fragLimit, timeLimit });
 }
+
+// The world-wide single-player top 10 on the title screen. Purely decorative:
+// with no score server (offline, file://, GitHub Pages) fetchScores resolves to
+// null and the title screen stays exactly as it was.
+async function showTitleScores() {
+  const table = await fetchScores(scoresUrl(hp.get('server_id')));
+  if (!table) return;
+  document.getElementById('start-scores-table').innerHTML = scoreRowsHtml(table);
+  document.getElementById('start-scores-empty').style.display = table.length ? 'none' : '';
+  document.getElementById('start-scores').classList.remove('hidden');
+}
+showTitleScores();
 
 elLaunch.addEventListener('click', launch);
 for (const el of [elSession, elName]) {

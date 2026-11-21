@@ -374,6 +374,16 @@
     background: var(--amber); color: #000; border: none;
   }
   #start button#f-launch:hover { background: #ff5a5a; }
+  /* the panel can grow (multiplayer fields + the table): scroll instead of clipping */
+  #start-panel { max-height: 96vh; overflow-y: auto; }
+  #start-scores { margin-top: 22px; padding-top: 14px; border-top: 1px solid rgba(53, 224, 74, 0.35); }
+  #start-scores.hidden { display: none; }
+  #start-scores h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: 4px; text-align: center; color: var(--green); font-weight: normal; }
+  #start-scores table { margin: 0 auto; border-collapse: collapse; font-size: 12px; letter-spacing: 1px; }
+  #start-scores td { padding: 1px 10px; text-align: left; color: #cfe; }
+  #start-scores td.num { text-align: right; }
+  #start-scores tr:first-child td { color: var(--amber); }
+  #start-scores .hint { text-align: center; }
 
   /* fatal-error overlay — shown instead of the game when WebGL isn't
      available; sits above #start so it always wins. */
@@ -453,6 +463,14 @@
     </fieldset>
 
     <button id="f-launch" type="button">LAUNCH</button>
+
+    <!-- world-wide single-player top 10; filled by main.js, stays hidden when
+         the score server can't be reached (the title screen is then unchanged) -->
+    <div id="start-scores" class="hidden">
+      <h2>TOP PILOTS</h2>
+      <table id="start-scores-table"></table>
+      <p class="hint" id="start-scores-empty">No scores yet — be the first.</p>
+    </div>
   </div>
 </div>
 

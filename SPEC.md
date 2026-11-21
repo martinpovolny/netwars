@@ -60,7 +60,10 @@ Godot / Unity, raw WebGL. Revisit WebRTC only if WSS jitter proves unplayable.
    lives → game over → name prompt (remembered in `localStorage`, ENTER
    submits) → world-wide top 10 from `GET/POST /scores` on the Go server
    (ranked level desc, score desc, earlier first; validated, rate-limited,
-   atomically persisted). The game must run unchanged with no backend. Lives
+   atomically persisted). The same top 10 is shown on the **title screen**
+   (under LAUNCH, while single/multiplayer is being chosen); it is hidden when
+   the score server can't be reached, leaving the title screen as it was. The
+   game must run unchanged with no backend. Lives
    and the pod bonus live in the SP client (`client/run.js`), not the shared
    sim, so co-op/golden parity is unaffected. Design:
    `docs/superpowers/specs/2026-11-21-highscores-design.md`.
