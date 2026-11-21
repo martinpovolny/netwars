@@ -32,6 +32,7 @@ web:
 	cp ../index.html web/assets/index.html
 	cp -R ../client web/assets/client
 	cp -R ../shared web/assets/shared
+	@find web/assets -name '*.test.mjs' -delete
 	@[ -d ../tracks ] && cp -R ../tracks web/assets/tracks && echo "bundled tracks/" || echo "note: ../tracks/ missing — music will 404"
 	@find web/assets -type f | wc -l | xargs echo "web/assets files:"
 

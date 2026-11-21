@@ -243,6 +243,31 @@
   #matchover.lose { border-color: var(--amber); box-shadow: 0 0 60px rgba(255, 43, 43, 0.22); }
   #matchover .sub { display: block; margin-top: 12px; font-size: 13px; color: #ff8; letter-spacing: 1px; }
 
+  /* single-player game over: final score, name entry, top-10 table */
+  #gameover {
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    margin: 0 auto; width: max-content; max-width: 90vw; min-width: 340px;
+    display: none; text-align: center; letter-spacing: 3px; padding: 22px 48px;
+    background: rgba(4, 2, 10, 0.82); border: 1px solid var(--amber);
+    box-shadow: 0 0 60px rgba(255, 43, 43, 0.22); pointer-events: auto;
+  }
+  #gameover.show { display: block; }
+  #gameover .title { font-size: 34px; color: var(--amber); text-shadow: 0 0 18px rgba(255, 43, 43, 0.5); }
+  #gameover .sub { display: block; margin-top: 12px; font-size: 14px; color: #ff8; letter-spacing: 1px; }
+  #gameover .key { display: block; margin-top: 14px; font-size: 13px; color: var(--green); letter-spacing: 1px; }
+  #go-entry { margin-top: 16px; display: none; }
+  #go-entry.show { display: block; }
+  #go-name {
+    font: inherit; font-size: 20px; letter-spacing: 3px; text-align: center; width: 12em;
+    color: #fff; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--green); padding: 6px 10px;
+  }
+  #go-name:focus { outline: none; box-shadow: 0 0 14px rgba(53, 224, 74, 0.5); }
+  #go-table { margin-top: 16px; display: none; font-size: 14px; letter-spacing: 1px; }
+  #go-table.show { display: table; margin-left: auto; margin-right: auto; }
+  #go-table td { padding: 2px 12px; text-align: left; color: #cfe; }
+  #go-table td.num { text-align: right; }
+  #go-table tr.me td { color: #ff8; background: rgba(255, 255, 136, 0.12); }
+
   /* inset labels (viewports themselves are drawn by WebGL) */
   #axis-label  { position: absolute; left: 20px;  top: 156px; color: var(--green); font-size: 12px; white-space: nowrap; }
   #radar-label { position: absolute; right: 20px; bottom: 196px; color: var(--grid); font-size: 12px; white-space: nowrap; }
@@ -450,6 +475,7 @@
 
   <div id="tr">
     <div>Score: <span class="v" id="score">000000</span></div>
+    <div id="lives-row" style="display:none">Lives: <span class="v" id="lives">3</span></div>
     <div>Missiles: <span class="v" id="missiles">20</span></div>
     <div id="guided" class="hidden">Guided: <span class="v guided-v" id="guided-shots">0</span></div>
   </div>
@@ -501,6 +527,13 @@
   <div id="matchover">
     <div class="title" id="matchover-title">MATCH OVER</div>
     <span class="sub" id="matchover-sub"></span>
+  </div>
+  <div id="gameover">
+    <div class="title">GAME OVER</div>
+    <span class="sub" id="go-sub"></span>
+    <div id="go-entry"><input type="text" id="go-name" maxlength="16" placeholder="Pilot" autocomplete="off" spellcheck="false"></div>
+    <table id="go-table"></table>
+    <span class="key" id="go-key"></span>
   </div>
 
   <div id="axis-label">Orientation</div>

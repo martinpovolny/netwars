@@ -27,6 +27,14 @@ export class HUD {
     this.boostGauge = document.getElementById('boost-gauge');
     this.boostFill = document.getElementById('boost-fill');
     this.msg = document.getElementById('msg');
+    this.livesRow = document.getElementById('lives-row');
+    this.livesEl = document.getElementById('lives');
+    this.gameOver = document.getElementById('gameover');
+    this.goSub = document.getElementById('go-sub');
+    this.goEntry = document.getElementById('go-entry');
+    this.goName = document.getElementById('go-name');
+    this.goTable = document.getElementById('go-table');
+    this.goKey = document.getElementById('go-key');
     this.dead = document.getElementById('dead');
     this.deadSub = document.getElementById('dead-sub');
     this.help = document.getElementById('help');
@@ -63,6 +71,49 @@ export class HUD {
   hideHelp() { this.help.classList.add('hidden'); this._helpT = 0; }
 
   // show the key list for a few seconds (H)
+  // single-player lives (the row stays hidden in multiplayer, which never calls this)
+  setLives(n) {
+    if (this.livesRow) this.livesRow.style.display = '';
+    if (this.livesEl) this.livesEl.textContent = String(n);
+  }
+
+  // Game-over overlay. `canSubmit`: show the name field (backend reachable);
+  // `waiting`: still probing the backend, so no input/hint yet.
+  showGameOver({ level, score, canSubmit = false, waiting = false, defaultName = '' }) {
+    this.gameOver.classList.add('show');
+    this.goSub.textContent = `Level ${level}   Score ${String(score).padStart(6, '0')}`;
+    this.goTable.classList.remove('show');
+    this.goEntry.classList.toggle('show', canSubmit);
+    this.goName.value = defaultName;
+    if (canSubmit) {
+      this.goKey.textContent = 'type your name · ENTER to submit · ESC to skip';
+      this.goName.focus();
+      this.goName.select();
+    } else {
+      this.goName.blur();
+      this.goKey.textContent = waiting ? '' : 'press any key to play again';
+    }
+  }
+
+  get nameValue() { return this.goName.value; }
+
+  showTable(entries, { highlightRank = null, recorded = true } = {}) {
+    this.goEntry.classList.remove('show');
+    this.goName.blur();
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    this.goTable.innerHTML = entries.map((en, i) =>
+      `<tr${highlightRank === i + 1 ? ' class="me"' : ''}><td class="num">${i + 1}.</td><td>${esc(en.name)}</td>` +
+      `<td class="num">L${en.level}</td><td class="num">${String(en.score).padStart(6, '0')}</td></tr>`).join('');
+    this.goTable.classList.toggle('show', entries.length > 0);
+    if (!recorded) this.goSub.textContent += '  (not recorded)';
+    this.goKey.textContent = 'press any key to play again';
+  }
+
+  hideGameOver() {
+    this.gameOver.classList.remove('show');
+    this.goName.blur();
+  }
+
   showHelp(seconds = 4) {
     this.help.classList.remove('hidden');
     this._helpT = seconds;
@@ -110,7 +161,9 @@ export class HUD {
 
     const dm = !!(lock && lock.dm);
 
-    this.dead.style.display = player.alive ? 'none' : 'block';
+    // the game-over panel replaces the "relaunch" banner (single-player only)
+    const gameOverUp = this.gameOver && this.gameOver.classList.contains('show');
+    this.dead.style.display = (player.alive || gameOverUp) ? 'none' : 'block';
     if (!player.alive && this.deadSub) {
       this.deadSub.textContent = dm
         ? 'FRAGGED — respawning'

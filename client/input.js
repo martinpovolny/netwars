@@ -10,6 +10,8 @@ export class Input {
     this.mouseRight = false;
 
     window.addEventListener('keydown', (e) => {
+      // typing into a text field (e.g. the high-score name) is not flight input
+      if (e.target instanceof HTMLInputElement) return;
       this.keys.add(e.code);
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     });
