@@ -116,8 +116,10 @@ func TestGuidedBoltCurvesTowardTarget(t *testing.T) {
 }
 
 // The guided bonus must be gentler than a missile lock — same target, same
-// flight time, the bolt's guide should bend its velocity noticeably less
-// than a missile's would.
+// amount of time spent homing, the bolt's guide should bend its velocity less
+// than a missile's would. (Equal *homing* time, not equal flight time: a
+// missile flies straight for missileGuideDelay before it starts to home, a
+// bolt only for guidedBoltGuideDelay.)
 func TestGuidedBoltGentlerThanMissile(t *testing.T) {
 	k, err := LoadConstants()
 	if err != nil {
@@ -135,7 +137,12 @@ func TestGuidedBoltGentlerThanMissile(t *testing.T) {
 		}
 		w.Projectiles.Spawn(Vec3{}, Vec3{Z: -1500}, teamPlayer, ttl, target, kind, "p1")
 		idx := (w.Projectiles.Cursor - 1 + w.Projectiles.Max) % w.Projectiles.Max
-		for i := 0; i < 36; i++ { // 0.6s — well inside both a bolt's and a missile's life
+		delay := k.Weapons["guidedBoltGuideDelay"]
+		if kind == kindMsl {
+			delay = k.Weapons["missileGuideDelay"]
+		}
+		steps := int((delay+0.3)*60 + 0.5) // 0.3 s of homing for each, well inside both lifetimes
+		for i := 0; i < steps; i++ {
 			w.Projectiles.Step(1.0/60.0, w)
 		}
 		return w.Projectiles.Vel[idx].X

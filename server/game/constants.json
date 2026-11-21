@@ -49,7 +49,7 @@
     "missileGuideRate": 0.01,
     "missileInterceptRadius": 20,
     "guidedBoltGuideDelay": 0.05,
-    "guidedBoltGuideRate": 0.25
+    "guidedBoltGuideRate": 0.05
   },
 
   "enemy": {
@@ -128,7 +128,7 @@
     "wantMissilesBelow": 0.4,
     "guidedChance": 0.2,
     "guidedRounds": 50,
-    "guidedConeDeg": 30
+    "guidedConeDeg": 45
   },
 
   "sim": {
